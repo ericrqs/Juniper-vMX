@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Driver Name="VNF Connectivity Manager L2 Driver"
+        Version="4.0.0"
+        MainClass="driver.VnfConnectivityManagerL2Driver"
+        Description="Fake L2 driver that translates an incoming connection request between a VNF resource and a partner resource into the creation of a new connector between the partner resource and a VNF VM port, which will then be handled by the underlying cloud provider of the VM.">
+    <Layout>
+        <Category Name="Hidden Commands">
+            <Command Name="ApplyConnectivityChanges" DisplayName="ApplyConnectivityChanges" Tags="allow_unreserved">
+                <Parameters>
+                    <Parameter Name="request" Type="String" Mandatory="True" DefaultValue="" Description=""/>
+                </Parameters>
+            </Command>
+        </Category>
+    </Layout>
+</Driver>

@@ -1,0 +1,7 @@
+cloudshell-core>=2.2.180,<2.3.0
+cloudshell-networking>=5.0.0,<5.1.0
+cloudshell-automation-api>=8.0.0.0,<8.2.0.0
+requests>=2.18.4,<2.19.0
+paramiko>=2.2.1,<2.3.0
+pyvmomi>=6.5.0.2017.5.post1,<6.6.0
+websocket-client==0.44.0

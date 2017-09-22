@@ -1,0 +1,797 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<DataModelInfo xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xmlns="http://schemas.qualisystems.com/ResourceManagement/DataModelSchema.xsd">
+    <Attributes>
+
+        <AttributeInfo IsReadOnly="false" Description="Comma-separated list of resource names to delete at teardown" DefaultValue="" Type="String" Name="Resources to Delete">
+            <Rules>
+                <Rule Name="Configuration"/>
+                <Rule Name="Setting"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Chassis App" Description="" Type="String" DefaultValue="" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+                <Rule Name="Setting"/>
+            </Rules>
+        </AttributeInfo>
+
+        <AttributeInfo Name="Internal Network Service" Description="" Type="String" DefaultValue="VLAN Auto" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+                <Rule Name="Setting"/>
+            </Rules>
+        </AttributeInfo>
+
+        <AttributeInfo Name="Module App" Description="" Type="String" DefaultValue="" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+                <Rule Name="Setting"/>
+            </Rules>
+        </AttributeInfo>
+
+        <AttributeInfo Name="Number of modules" Description="" Type="Numeric" DefaultValue="1" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+                <Rule Name="Setting"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Number of ports per module" Description="" Type="Numeric" DefaultValue="10" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+                <Rule Name="Setting"/>
+            </Rules>
+        </AttributeInfo>
+
+        <AttributeInfo Name="Management IP" Description="" Type="String" DefaultValue="dhcp" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+                 <Rule Name="Setting"/>
+           </Rules>
+        </AttributeInfo>
+
+        <AttributeInfo Name="Deployed Resource Family" Description="" Type="String" DefaultValue="Router" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+                 <Rule Name="Setting"/>
+           </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Deployed Resource Model" Description="" Type="String" DefaultValue="Generic Router" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+                  <Rule Name="Setting"/>
+          </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Deployed Resource Driver" Description="" Type="String" DefaultValue="Generic Router Driver" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+                 <Rule Name="Setting"/>
+           </Rules>
+        </AttributeInfo>
+
+        <AttributeInfo Name="Controller App Resource Model" Description="" Type="String" DefaultValue="Generic App Model" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+                <Rule Name="Setting"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Card App Resource Model" Description="" Type="String" DefaultValue="Generic App Model" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+                <Rule Name="Setting"/>
+            </Rules>
+        </AttributeInfo>
+
+        <AttributeInfo Name="VM Port Full Name" Description="For a fake L2 port, full path of the corresponding port resource under the deployed VNF card VM" Type="String" DefaultValue="" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="VM Port Full Address" Description="For a fake L2 port, full address of the corresponding port resource under the deployed VNF card VM" Type="String" DefaultValue="" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="User" Description="" Type="String" DefaultValue="" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Password" Description="" Type="Password" DefaultValue="3M3u7nkDzxWb0aJ/IZYeWw==" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Enable Password" Description="The enable password is required by some CLI protocols such as Telnet and is required according to the device configuration." Type="Password" DefaultValue="3M3u7nkDzxWb0aJ/IZYeWw=="
+                       IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Power Management" Description="Used by the power management orchestration, if enabled, to determine whether to automatically manage the device power status. Enabled by default." Type="Boolean" DefaultValue="True" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="System Name" Description="A unique identifier for the device, if exists in the device terminal/os." Type="String" DefaultValue="" IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Contact Name" Description="The name of a contact registered in the device." Type="String" DefaultValue="" IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="OS Version" Description="Version of the Operating System." Type="String" DefaultValue="" IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Version" Description="The firmware version of the resource." Type="String" DefaultValue="" IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Vendor" Description="The name of the device manufacture." Type="String" DefaultValue="" IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Location" Description="The device physical location identifier. For example Lab1/Floor2/Row5/Slot4." Type="String" DefaultValue="" IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Backup Location" Description="The location in which configuration files will be saved in case no backup location input is passed to the Save command." Type="String" DefaultValue="" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Backup Type" Description="Supported protocols for saving and restoring of configuration and firmware files. Possible values are &quot;File System&quot;, &quot;FTP&quot; and &quot;TFTP&quot;. Default value is &quot;File System&quot;." Type="String" DefaultValue="File System" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Backup User" Description="Username for the storage server used for saving and restoring of configuration and firmware files." Type="String" DefaultValue="" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Backup Password" Description="Password for the storage server used for saving and restoring of configuration and firmware files." Type="Password" DefaultValue="3M3u7nkDzxWb0aJ/IZYeWw==" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Model" Description="The device model. This information is typically used for abstract resource filtering." Type="String" DefaultValue="" IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="SNMP Read Community" Description="The SNMP Read-Only Community String is like a password. It is sent along with each SNMP Get-Request and allows (or denies) access to device." Type="String" DefaultValue="" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="SNMP Write Community" Description="The SNMP Write Community String is like a password. It is sent along with each SNMP Set-Request and allows (or denies) chaning MIBs values." Type="String" DefaultValue="" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="SNMP V3 Password" Description="Relevant only in case SNMP V3 is in use." Type="String" DefaultValue="" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="SNMP V3 Private Key" Description="Relevant only in case SNMP V3 is in use." Type="String" DefaultValue="" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="SNMP V3 User" Description="Relevant only in case SNMP V3 is in use." Type="String" DefaultValue="" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Enable SNMP" Description="If set to True and SNMP isn’t enabled yet in the device the Shell will automatically enable SNMP in the device when Autoload command is called. SNMP must be enabled on the device for the Autoload command to run successfully. True by default." Type="Boolean" DefaultValue="True" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Disable SNMP" Description="If set to True SNMP will be disabled automatically by the Shell after the Autoload command execution is completed. False by default." Type="Boolean" DefaultValue="False" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="SNMP Version" Description="The version of SNMP to use. Possible values are v1, v2c and v3." Type="String" DefaultValue="" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Sessions Concurrency Limit" Description="The maximum number of concurrent sessions that the driver will open to the device. Default is 1 (no concurrency)." Type="Numeric" DefaultValue="1" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Console Server IP Address" Description="The IP address of the console server, in IPv4 format." Type="String" DefaultValue="" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Console User" Description="" Type="String" DefaultValue="" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="VRF Management Name" Description="The default VRF Management to use if configured in the network and no such input was passed to the Save or Restore command." Type="String" DefaultValue="" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="CLI TCP Port" Description="TCP Port to user for CLI connection. If kept empty a default CLI port will be used based on the chosen protocol, for example Telnet will use port 23." Type="Numeric" DefaultValue="0" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Console Password" Description="" Type="Password" DefaultValue="3M3u7nkDzxWb0aJ/IZYeWw=="
+                       IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Console Port" Description="The port on the console server, usually TCP port, which the device is associated with." Type="Numeric" DefaultValue="0" IsReadOnly="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo xsi:type="LookupAttributeDetails" Name="CLI Connection Type" Description="The CLI connection type that will be used by the driver. Possible values are Auto, Console, SSH, Telnet and TCP. If Auto is selected the driver will choose the available connection type automatically. Default value is Auto." Type="Lookup" DefaultValue="Auto"
+                       IsReadOnly="false" IsCommand="false">
+            <Rules Override="false">
+                <Rule Name="Configuration"/>
+            </Rules>
+            <LookupValues>
+                <LookupValue NumericValue="0" StringValue="Auto"/>
+                <LookupValue NumericValue="1" StringValue="Console"/>
+                <LookupValue NumericValue="2" StringValue="SSH"/>
+                <LookupValue NumericValue="3" StringValue="Telnet"/>
+                <LookupValue NumericValue="4" StringValue="TCP"/>
+            </LookupValues>
+        </AttributeInfo>
+        <AttributeInfo Name="Serial Number" Description="" Type="String" DefaultValue="" IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="MAC Address" Description="" Type="String" DefaultValue="" IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="L2 Protocol Type" Description="The L2 protocol type configured on the interface. For example POS, Serial." Type="String" DefaultValue="" IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="IPv4 Address" Description="" Type="String" DefaultValue="" IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="IPv6 Address" Description="" Type="String" DefaultValue="" IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Port Description" Description="The description of the port as configured in the device." Type="String" DefaultValue="" IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Bandwidth" Description="The current interface bandwidth, in MB." Type="Numeric" DefaultValue="0" IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="MTU" Description="The current MTU configured on the interface." Type="Numeric" DefaultValue="0" IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo xsi:type="LookupAttributeDetails" Name="Duplex" Description="The current duplex configuration on the interface. Possible values are Half or Full." Type="Lookup" DefaultValue="Half"
+                       IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+            <LookupValues>
+                <LookupValue NumericValue="2" StringValue="Half"/>
+                <LookupValue NumericValue="3" StringValue="Full"/>
+            </LookupValues>
+        </AttributeInfo>
+        <AttributeInfo Name="Adjacent" Description="The adjacent device (system name) and port, based on LLDP or CDP protocol." Type="String" DefaultValue="" IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Auto Negotiation" Description="The current auto negotiation configuration on the interface." Type="Boolean" DefaultValue="False" IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo Name="Associated Ports" Description="Ports associated with this port channel. The value is in the format &quot;[portResourceName],…&quot;, for example &quot;GE0-0-0-1,GE0-0-0-2&quot;" Type="String" DefaultValue=""
+                       IsReadOnly="true">
+            <Rules Override="false">
+                <Rule Name="Setting"/>
+                <Rule Name="Available For Abstract Resources"/>
+            </Rules>
+        </AttributeInfo>
+    </Attributes>
+    <ResourceFamilies>
+        <ResourceFamily Description="" Name="Mutex Service Family" AllowRemoteConnection="false" ServiceType="Regular" IsService="true" IsAdminOnly="true">
+            <AttachedAttributes/>
+            <AttributeValues/>
+            <Models>
+                <ResourceModel Description="" Name="Mutex Service" SupportsConcurrentCommands="false">
+                    <AttachedAttributes>
+                    </AttachedAttributes>
+                    <AttributeValues>
+                    </AttributeValues>
+                    <ParentModels/>
+                    <Drivers/>
+                    <Scripts>
+                    </Scripts>
+                </ResourceModel>
+            </Models>
+            <Categories>
+                <Category>VNF</Category>
+            </Categories>
+        </ResourceFamily>
+
+
+        <ResourceFamily Description="" Name="VNF Service" AllowRemoteConnection="false" ServiceType="Regular" IsService="true" IsAdminOnly="true">
+            <AttachedAttributes/>
+            <AttributeValues/>
+            <Models>
+                <ResourceModel Description="" Name="VNF Cleanup Service" SupportsConcurrentCommands="false">
+                    <AttachedAttributes>
+                        <AttachedAttribute Name="Resources to Delete" UserInput="true" IsLocal="true" IsOverridable="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                    </AttachedAttributes>
+                    <AttributeValues>
+                        <AttributeValue Name="Resources to Delete" Value=""/>
+                    </AttributeValues>
+                    <ParentModels/>
+                    <Drivers/>
+                    <Scripts>
+                        <ScriptName>vnf_cleanup_orch_hook_post_teardown</ScriptName>
+                    </Scripts>
+                </ResourceModel>
+            </Models>
+            <Categories>
+                <Category>VNF</Category>
+            </Categories>
+        </ResourceFamily>
+
+        <ResourceFamily Name="Switch" Description="" IsSearchable="true" IsPowerSwitch="false"  >
+            <AttachedAttributes/>
+            <AttributeValues/>
+            <Models>
+                <ResourceModel Name="VNF Connectivity Manager Virtual L2" Description="" SupportsConcurrentCommands="true">
+                    <AttachedAttributes>
+                        <AttachedAttribute IsLocal="true" IsOverridable="true" Name="Vlan Type" UserInput="true">
+                            <AllowedValues>
+                                <AllowedValue>VLAN</AllowedValue>
+                                <AllowedValue>VXLAN</AllowedValue>
+                            </AllowedValues>
+                        </AttachedAttribute>
+                    </AttachedAttributes>
+                    <AttributeValues>
+                        <AttributeValue Name="Vlan Type" Value="VLAN"/>
+                    </AttributeValues>
+                    <ParentModels/>
+                    <Drivers>
+                        <DriverName>VNF Connectivity Manager L2 Driver</DriverName>
+                    </Drivers>
+                    <Scripts/>
+                </ResourceModel>
+            </Models>
+            <Categories/>
+        </ResourceFamily>
+        <ResourceFamily Name="VNF Router Template" Description="" IsSearchable="true" IsPowerSwitch="false">
+            <AttachedAttributes/>
+            <AttributeValues/>
+            <Models>
+                <ResourceModel Name="Juniper vMX Router Template" Description="" SupportsConcurrentCommands="true">
+                    <AttachedAttributes>
+                        <AttachedAttribute Name="User" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Password" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Enable Password" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="System Name" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Contact Name" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="OS Version" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Vendor" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Location" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Backup Location" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Backup Type" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Backup User" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Backup Password" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="VRF Management Name" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Model" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="SNMP Read Community" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="SNMP V3 Password" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="SNMP V3 Private Key" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="SNMP V3 User" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="SNMP Version" IsOverridable="true" IsLocal="true">
+                            <AllowedValues>
+                                <AllowedValue>v1</AllowedValue>
+                                <AllowedValue>v2c</AllowedValue>
+                                <AllowedValue>v3</AllowedValue>
+                            </AllowedValues>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="SNMP Write Community" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Sessions Concurrency Limit" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Console Password" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Console Port" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="CLI TCP Port" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Console Server IP Address" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Console User" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="CLI Connection Type" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Power Management" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Enable SNMP" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Disable SNMP" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+
+                        <AttachedAttribute Name="Chassis App" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Module App" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Deployed Resource Family" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Deployed Resource Model" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Controller App Resource Model" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Card App Resource Model" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Deployed Resource Driver" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Internal Network Service" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Number of modules" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Number of ports per module" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Management IP" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute IsLocal="true" IsOverridable="true" Name="Vlan Type" UserInput="true">
+                            <AllowedValues>
+                                <AllowedValue>VLAN</AllowedValue>
+                                <AllowedValue>VXLAN</AllowedValue>
+                            </AllowedValues>
+                        </AttachedAttribute>
+
+                    </AttachedAttributes>
+                    <AttributeValues>
+                        <AttributeValue Name="User" Value=""/>
+                        <AttributeValue Name="Password" Value="3M3u7nkDzxWb0aJ/IZYeWw=="/>
+                        <AttributeValue Name="Enable Password" Value="3M3u7nkDzxWb0aJ/IZYeWw=="/>
+                        <AttributeValue Name="System Name" Value=""/>
+                        <AttributeValue Name="Contact Name" Value=""/>
+                        <AttributeValue Name="OS Version" Value=""/>
+                        <AttributeValue Name="Vendor" Value=""/>
+                        <AttributeValue Name="Location" Value=""/>
+                        <AttributeValue Name="Backup Location" Value=""/>
+                        <AttributeValue Name="Backup User" Value=""/>
+                        <AttributeValue Name="Backup Password" Value="3M3u7nkDzxWb0aJ/IZYeWw=="/>
+                        <AttributeValue Name="Backup Type" Value=""/>
+                        <AttributeValue Name="Model" Value=""/>
+                        <AttributeValue Name="SNMP Read Community" Value=""/>
+                        <AttributeValue Name="SNMP V3 Password" Value=""/>
+                        <AttributeValue Name="SNMP V3 Private Key" Value=""/>
+                        <AttributeValue Name="SNMP V3 User" Value=""/>
+                        <AttributeValue Name="SNMP Version" Value=""/>
+                        <AttributeValue Name="SNMP Write Community" Value=""/>
+                        <AttributeValue Name="VRF Management Name" Value=""/>
+                        <AttributeValue Name="Console Password" Value="3M3u7nkDzxWb0aJ/IZYeWw=="/>
+                        <AttributeValue Name="Console Port" Value="0"/>
+                        <AttributeValue Name="CLI TCP Port" Value="0"/>
+                        <AttributeValue Name="Console Server IP Address" Value=""/>
+                        <AttributeValue Name="Console User" Value=""/>
+                        <AttributeValue Name="CLI Connection Type" Value="Auto"/>
+                        <AttributeValue Name="Power Management" Value="True"/>
+                        <AttributeValue Name="Enable SNMP" Value="True"/>
+                        <AttributeValue Name="Disable SNMP" Value="False"/>
+                        <AttributeValue Name="Chassis App" Value=""/>
+                        <AttributeValue Name="Module App" Value=""/>
+                        <AttributeValue Name="Internal Network Service" Value=""/>
+                        <AttributeValue Name="Number of modules" Value="1"/>
+                        <AttributeValue Name="Number of ports per module" Value="10"/>
+                        <AttributeValue Name="Management IP" Value="dhcp"/>
+                        <AttributeValue Name="Vlan Type" Value="VLAN"/>
+                        <AttributeValue Name="Deployed Resource Family" Value="Router"/>
+                        <AttributeValue Name="Deployed Resource Model" Value="Juniper JunOS Router"/>
+                        <AttributeValue Name="Controller App Resource Model" Value="vMX VCP"/>
+                        <AttributeValue Name="Card App Resource Model" Value="vMX VFP"/>
+                        <AttributeValue Name="Deployed Resource Driver" Value="Generic Juniper JunOS Driver Version3"/>
+                    </AttributeValues>
+                    <ParentModels/>
+                    <Drivers>
+                        <DriverName>vMX VNF Deployment Resource Driver</DriverName>
+                    </Drivers>
+                    <Scripts/>
+                </ResourceModel>
+            </Models>
+            <Categories/>
+        </ResourceFamily>
+
+        <ResourceFamily Name="VNF Card" IsSearchable="true" IsConnectable="false" ResourceType="Application" IsAdminOnly="true">
+            <AttachedAttributes/>
+            <AttributeValues/>
+            <Models>
+                <ResourceModel Name="vMX VCP" Description="" SupportsConcurrentCommands="false">
+                    <AttachedAttributes>
+                        <AttachedAttribute Name="Public IP" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                    </AttachedAttributes>
+                    <AttributeValues>
+                        <AttributeValue Name="Public IP" Value=""/>
+                    </AttributeValues>
+                    <ParentModels/>
+                    <Drivers/>
+                    <Scripts/>
+                </ResourceModel>
+                <ResourceModel Name="vMX VFP" Description="" SupportsConcurrentCommands="false">
+                    <AttachedAttributes>
+                        <AttachedAttribute Name="Public IP" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                    </AttachedAttributes>
+                    <AttributeValues>
+                        <AttributeValue Name="Public IP" Value=""/>
+                    </AttributeValues>
+                    <ParentModels/>
+                    <Drivers/>
+                    <Scripts/>
+                </ResourceModel>
+            </Models>
+            <Categories/>
+        </ResourceFamily>
+        <ResourceFamily Name="VNF Connectivity Manager Port" IsSearchable="true" IsConnectable="true">
+            <AttachedAttributes>
+            </AttachedAttributes>
+            <AttributeValues>
+            </AttributeValues>
+            <Models>
+                <ResourceModel Name="VNF Connectivity Manager L2 Port" Description="" SupportsConcurrentCommands="false">
+                    <AttachedAttributes>
+                        <AttachedAttribute Name="VM Port Full Name" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="VM Port Full Address" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                    </AttachedAttributes>
+                    <AttributeValues>
+                        <AttributeValue Name="VM Port Full Name" Value=""/>
+                        <AttributeValue Name="VM Port Full Address" Value=""/>
+                    </AttributeValues>
+                    <ParentModels>
+                        <ParentModelName>VNF Connectivity Manager Virtual L2</ParentModelName>
+                        <ParentModelName>vMX VFP</ParentModelName>
+                    </ParentModels>
+                    <Drivers/>
+                    <Scripts/>
+                </ResourceModel>
+                <ResourceModel Name="VNF Connectivity Manager VM Port" Description="" SupportsConcurrentCommands="false">
+                    <AttachedAttributes>
+                        <AttachedAttribute Name="Requested vNIC Name" IsOverridable="true" IsLocal="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                    </AttachedAttributes>
+                    <AttributeValues>
+                        <AttributeValue Name="Requested vNIC Name" Value=""/>
+                    </AttributeValues>
+                    <ParentModels>
+                        <ParentModelName>VNF Connectivity Manager Virtual L2</ParentModelName>
+                        <ParentModelName>vMX VFP</ParentModelName>
+                    </ParentModels>
+                    <Drivers/>
+                    <Scripts/>
+                </ResourceModel>
+            </Models>
+            <Categories/>
+        </ResourceFamily>
+        <ResourceFamily Name="Port Template" IsSearchable="true" IsConnectable="true">
+            <AttachedAttributes/>
+            <AttributeValues/>
+            <Models>
+                <ResourceModel Name="Generic Port Template" Description="" SupportsConcurrentCommands="false">
+                    <AttachedAttributes>
+                        <!--<AttachedAttribute Name="MAC Address" IsOverridable="true" IsLocal="true">-->
+                            <!--<AllowedValues/>-->
+                        <!--</AttachedAttribute>-->
+                        <!--<AttachedAttribute Name="L2 Protocol Type" IsOverridable="true" IsLocal="true">-->
+                            <!--<AllowedValues/>-->
+                        <!--</AttachedAttribute>-->
+                        <!--<AttachedAttribute Name="IPv4 Address" IsOverridable="true" IsLocal="true">-->
+                            <!--<AllowedValues/>-->
+                        <!--</AttachedAttribute>-->
+                        <!--<AttachedAttribute Name="IPv6 Address" IsOverridable="true" IsLocal="true">-->
+                            <!--<AllowedValues/>-->
+                        <!--</AttachedAttribute>-->
+                        <!--<AttachedAttribute Name="Port Description" IsOverridable="true" IsLocal="true">-->
+                            <!--<AllowedValues/>-->
+                        <!--</AttachedAttribute>-->
+                        <!--<AttachedAttribute Name="Bandwidth" IsOverridable="true" IsLocal="true">-->
+                            <!--<AllowedValues/>-->
+                        <!--</AttachedAttribute>-->
+                        <!--<AttachedAttribute Name="MTU" IsOverridable="true" IsLocal="true">-->
+                            <!--<AllowedValues/>-->
+                        <!--</AttachedAttribute>-->
+                        <!--<AttachedAttribute Name="Duplex" IsOverridable="true" IsLocal="true">-->
+                            <!--<AllowedValues/>-->
+                        <!--</AttachedAttribute>-->
+                        <!--<AttachedAttribute Name="Adjacent" IsOverridable="true" IsLocal="true">-->
+                            <!--<AllowedValues/>-->
+                        <!--</AttachedAttribute>-->
+                        <!--<AttachedAttribute Name="Auto Negotiation" IsOverridable="true" IsLocal="true">-->
+                            <!--<AllowedValues/>-->
+                        <!--</AttachedAttribute>-->
+                    </AttachedAttributes>
+                    <AttributeValues>
+                        <!--<AttributeValue Name="MAC Address" Value=""/>-->
+                        <!--<AttributeValue Name="L2 Protocol Type" Value=""/>-->
+                        <!--<AttributeValue Name="IPv4 Address" Value=""/>-->
+                        <!--<AttributeValue Name="IPv6 Address" Value=""/>-->
+                        <!--<AttributeValue Name="Port Description" Value=""/>-->
+                        <!--<AttributeValue Name="Bandwidth" Value="0"/>-->
+                        <!--<AttributeValue Name="MTU" Value="0"/>-->
+                        <!--<AttributeValue Name="Duplex" Value="Half"/>-->
+                        <!--<AttributeValue Name="Adjacent" Value=""/>-->
+                        <!--<AttributeValue Name="Auto Negotiation" Value="False"/>-->
+                    </AttributeValues>
+                    <ParentModels>
+                        <ParentModelName>Juniper vMX Router Template</ParentModelName>
+                    </ParentModels>
+                    <Drivers/>
+                    <Scripts/>
+                </ResourceModel>
+            </Models>
+            <Categories/>
+        </ResourceFamily>
+
+        <!--<ResourceFamily Name="Port Channel Template" IsConnectable="true" Description="" IsSearchable="true">-->
+            <!--<AttachedAttributes/>-->
+            <!--<AttributeValues/>-->
+            <!--<Models>-->
+                <!--<ResourceModel Name="Generic Port Channel Template" Description="" SupportsConcurrentCommands="false">-->
+                    <!--<AttachedAttributes>-->
+                        <!--<AttachedAttribute Name="Associated Ports" IsOverridable="true" IsLocal="true">-->
+                            <!--<AllowedValues/>-->
+                        <!--</AttachedAttribute>-->
+                        <!--<AttachedAttribute Name="IPv4 Address" IsOverridable="true" IsLocal="true">-->
+                            <!--<AllowedValues/>-->
+                        <!--</AttachedAttribute>-->
+                        <!--<AttachedAttribute Name="IPv6 Address" IsOverridable="true" IsLocal="true">-->
+                            <!--<AllowedValues/>-->
+                        <!--</AttachedAttribute>-->
+                        <!--<AttachedAttribute Name="Port Description" IsOverridable="true" IsLocal="true">-->
+                            <!--<AllowedValues/>-->
+                        <!--</AttachedAttribute>-->
+                    <!--</AttachedAttributes>-->
+                    <!--<AttributeValues>-->
+                        <!--<AttributeValue Name="Associated Ports" Value=""/>-->
+                        <!--<AttributeValue Name="IPv4 Address" Value=""/>-->
+                        <!--<AttributeValue Name="IPv6 Address" Value=""/>-->
+                        <!--<AttributeValue Name="Port Description" Value=""/>-->
+                    <!--</AttributeValues>-->
+                    <!--<ParentModels>-->
+                        <!--<ParentModelName>Juniper JunOS Router Template</ParentModelName>-->
+                    <!--</ParentModels>-->
+                    <!--<Drivers/>-->
+                    <!--<Scripts/>-->
+                <!--</ResourceModel>-->
+            <!--</Models>-->
+            <!--<Categories/>-->
+        <!--</ResourceFamily>-->
+    </ResourceFamilies>
+    <DriverDescriptors/>
+    <ScriptDescriptors>
+        <ScriptDescriptor Name="vnf_cleanup_orch_hook_post_teardown" CategoryName="Hidden Commands" Version="1.0.0" Alias="vnf_cleanup_orch_hook_post_teardown">
+            <ScriptInputs />
+        </ScriptDescriptor>
+        <ScriptDescriptor Name="hook_setup" CategoryName="Hidden Commands" Version="1.0.0" Alias="Setup script">
+            <ScriptInputs />
+        </ScriptDescriptor>
+        <ScriptDescriptor Name="hook_teardown" CategoryName="Hidden Commands" Version="1.0.0" Alias="Teardown script">
+            <ScriptInputs />
+        </ScriptDescriptor>
+    </ScriptDescriptors>
+</DataModelInfo>

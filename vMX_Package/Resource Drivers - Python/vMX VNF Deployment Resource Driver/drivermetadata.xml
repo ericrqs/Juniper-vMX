@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Driver Name="vMX VNF Deployment Resource Driver"
+        Version="4.0.0"
+        MainClass="driver.VmxVnfDeploymentResourceDriver"
+        Description="Deploys and connects vMX VMs based on a template router resource. Replaces itself with a resource whose ports can be connected directly to partner resources in the reservation. Internally connects the resource to a fake L2 switch that translates connection requests into new connectors between the partner resources and the appropriate VNF VM port. VM connections will then be set by the underlying VM cloud provider.">
+    <Layout>
+        <Command Name="deploy_vnf" DisplayName="Deploy VNF" Tags="" Description="Deploys VNF VMs based on the template resource">
+        </Command>
+    </Layout>
+</Driver>
