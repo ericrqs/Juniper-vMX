@@ -62,11 +62,7 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
     def cleanup(self):
         pass
 
-    def orch_hook_during_provisioning2(self, context):
-        logger = get_qs_logger(log_group=context.reservation.reservation_id, log_file_prefix='vMX')
-        logger.info('SECOND HOOK TEST')
-
-    def orch_hook_during_provisioning(self, context):
+    def vmx_orch_hook_during_provisioning(self, context):
         logger = get_qs_logger(log_group=context.reservation.reservation_id, log_file_prefix='vMX')
         logger.info('deploy called')
         api = CloudShellAPISession(host=context.connectivity.server_address,
