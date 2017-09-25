@@ -283,12 +283,13 @@ the Internal Network Service attribute on the vMX template resource.
 Tested configuration:
 
     CentOS Linux release 7.3.1611  (Core)
-    Four physical NICs: enp3s0f0 enp3s0f1 enp4s0f0 enp4s0f1
+    Four physical NICs: enp3s0f0 enp4s0f0 connected, enp3s0f1 enp4s0f1 not connected
     OpenStack Newton
     
 Note: vMX is very sensitive to OpenStack network settings. If the `128.0.0.0` network is not working, 
 the VCP will not detect the VFP and will not show interfaces like `ge-0/0/0`. Even when `ge-0/0/0` appears,
-actual traffic may not be able to pass through the VFP interface.
+actual traffic may not be able to pass through the VFP interface, so for example the vMX can't ping something on the ge-0/0/0 interface.
+
 
 After a lot of trial and error, we found the following combination of settings that works under OpenStack Newton.
 This is needed even if deploying manually with the official Juniper Heat scripts. We would appreciate any further insight or guidance.
@@ -444,6 +445,9 @@ Change the default security group to allow all ingress and egress traffic for IC
 a way to use a more limited scope.
 
 
+#### vMX setup
+
+
 Install a Cirros image to test the infrastructure:
 
     curl http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img | glance          image-create --name='cirros image' --visibility=public --container-format=bare --disk-format=qcow2
@@ -459,8 +463,11 @@ Create VCP and VFP flavors:
     nova flavor-create --is-public true re-flv auto 4096 28 2
     nova flavor-create --is-public true pfe-flv auto 4096 4 3
 
-Deploy the VCP and VFP to make sure the system is working:
+Deploy the VCP and VFP from the CLI to make sure the system is working:
 
+    . keystonerc_admin
+    
+    # run the following directly in the Bash command prompt 
     n=81
     net128name="n128_$n"
     net128subnetname="${net128name}-subnet"
@@ -517,20 +524,51 @@ Deploy the VCP and VFP to make sure the system is working:
      $vfpname16
     
     
-Follow the boot messages in the interactive console of the VCP. Note that there will be no data in the Log tab
-because the serial console plugin is enabled.
+Follow the boot messages in the interactive console of the VCP in the OpenStack Horizon web GUI. 
+Note that there will be no data in the Log tab because the serial console plugin is enabled.
  
-Wait about 10 minutes. For much of this time, there will be nothing on the console because the first VCP boot prints
-only to the serial console. Eventually it should start to print bright white text and FreeBSD boot messages. 
+Wait about 10 minutes. For much of this time, there will be nothing on the console because the first VCP 
+boot prints only to the serial console. For some of this time there will be a solid bright white cursor in the corner.
+Eventually it should start to print bright white text and FreeBSD boot messages. 
+
+At the `login:` prompt, log in as `root` with no password. Run `cli` to get the JunOS CLI. 
+
+    show interfaces terse
     
-Log in to the console of the VCP (root, no password) and do `halt`.
+If the vMX is working correctly, you should see interfaces like `ge-0/0/0`. They may take several minutes to show up.
 
-Power off the VCP VM.
+You can also perform a further network test:
 
-Take a snapshot of the powered-off VCP called `vcpss`. This snapshot the image that will be used by Quali to 
+- Set an IP on `ge-0/0/0`:
+    
+
+    login: root
+    cli
+    configure
+    set interfaces ge-0/0/0 unit 0 family inet ipv4 address 53.0.0.123/24
+    commit
+    exit
+_Note: This IP `53.0.0.123` must match the value that OpenStack assigned to the VFP VM on the `e` network_    
+    
+- Create two Cirros VMs on network `e`
+- Ensure that the Cirros VMs received IPs and can ping each other
+- Try to ping between a Cirros VM and the vMX from  
+
+It can fail in a number of ways, in ascending order of severity:
+- Can't ping the `ge-0/0/0.0` interface
+- `ge-0/0/0` doesn't appear on the VCP
+- `pfe-/0/0/0` doesen't appear on the VCP
+- If you log in to the VFP console (`root`/`root`) you can't ping the VCP at `128.0.0.1`
+
+
+Once you have determined that the manually deployed vMX works on your system:
+
+- Log in to the console of the VCP (root, no password) and do `halt`.
+- Power off the VCP VM.
+- Take a snapshot of the powered-off VCP called `vcpss`. This snapshot is the image that will be used by Quali to 
 deploy the VCP, along with the vanilla VFP image that was imported.
+- Clean up the networks and VMs:
 
-After you have validated the system and taken the snapshot `vcpss`, clean up the networks and VMs:
 
     n=81
     net128name="n128_$n"
@@ -554,30 +592,76 @@ Print out certain useful object ids that must be entered into CloudShell:
     neutron net-show mgmt -c id -f value
     neutron subnet-show public-subnet -c id -f value
     glance image-list | egrep 'vcpss|vfp-img'
+    grep network_vlan_ranges /etc/neutron/plugins/ml2/ml2_conf.ini
+    ip addr |grep 'inet '
     
 You will need to provide the password for `admin` (or another privileged user you created), the 
 _network_ id of the network you want to use for management, the public flat _subnet_ id you want 
 to use for floating IPs, and the VCP and VFP image ids.
 
 
+Example output:
+    
+    [root@localhost ~(keystone_admin)]# grep PASSWORD keystonerc_admin
+        export OS_PASSWORD=4d8762137921447b
+
+    [root@localhost ~(keystone_admin)]# neutron net-show mgmt -c id -f value
+    5761bb10-d50b-4533-854e-f257c2fd661b
+
+    [root@localhost ~(keystone_admin)]# neutron subnet-show public-subnet -c id -f value
+    e4069a55-2278-4d48-a4a3-a32d5329249d
+
+    [root@localhost ~(keystone_admin)]# glance image-list | egrep 'vcpss|vfp-img'
+    | badfe6af-7f19-4a20-87d0-63584705dec3 | vcpss        |
+    | 10caabf8-7739-4a83-b249-d738b728ddf4 | vfp-img      |
+
+    [root@localhost ~(keystone_admin)]# grep network_vlan_ranges /etc/neutron/plugins/ml2/ml2_conf.ini
+    network_vlan_ranges = physnet1:48:60
+
+    [root@localhost ~(keystone_admin)]# ip addr |grep 'inet '
+    inet 127.0.0.1/8 scope host lo
+    inet 192.168.137.201/24 brd 192.168.137.255 scope global br-ex
 
 
+#### Configure an OpenStack cloud provider
 
-Obtain certain details  
-
-Create an OpenStack cloud provider resource:
+Create an OpenStack cloud provider resource based on this information:
 
     Family: Cloud Provider
     Model: OpenStack
     Driver: OpenStack Shell Driver
     
-    User Name: admin
-    Password: 4d8762137921447b
-    
     Controller URL: http://192.168.137.201:5000/v3
-    Floating IP Subnet ID: 
+    Floating IP Subnet ID: 4069a55-2278-4d48-a4a3-a32d5329249d
     OpenStack Domain Name: default
+    OpenStack Management Network ID: 5761bb10-d50b-4533-854e-f257c2fd661b
+    OpenStack Physical Interface Name: physnet1
+    OpenStack Project Name: admin
+    OpenStack Reserved Networks:
+    Password: 4d8762137921447b
+    User Name: admin
+    Vlan Type: VLAN
     
+    
+If you have a project name other than `admin`, set it there. You can leave `OpenStack Reserved Networks` blank. 
+
+`Vlan Type` can be either `VLAN` or `VXLAN` depending on what you want to connect the vMX to. If you have a trunk
+from the OpenStack server to a physical network, use `VLAN`. Note: When you create the vMX template resource, 
+its `Vlan Type` attribute must match this.
+
+#### Create apps
+
+##### VCP
+
+##### VFP
+
+
+
+ 
+
+If you get these values from the OpenStack web GUI, be sure you have the right id. CloudShell asks for network in some places and subnet in others.
+In general, don't trust UUIDs you see in the URL bar &mdash; instead look in the body of the details page.
+
 
 
 #### 
