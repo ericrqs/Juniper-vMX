@@ -653,18 +653,48 @@ its `Vlan Type` attribute must match this.
 
 ##### VCP
 
-##### VFP
+    Example app name: openstack-vcp
+    
+    Image ID: badfe6af-7f19-4a20-87d0-63584705dec3
+    Instance Flavor: re-flv
+    Add Floating IP: True
+    Auto Udev: False
+    
+    App Resource Shell: vMX VCP
 
+`Image ID` is the id of the snapshot image `vcpss` created earlier.
 
+All others can be left blank, including the `Floating IP Subnet ID` if you want to use the default for the cloud provider.
+ 
+![](screenshots/openstack-vcp1.png)
+![](screenshots/openstack-vcp2.png)
+![](screenshots/openstack-vcp3.png)
+![](screenshots/openstack-vcp4.png)
 
  
+##### VFP
 
-If you get these values from the OpenStack web GUI, be sure you have the right id. CloudShell asks for network in some places and subnet in others.
+    Example app name: openstack-vfp0
+    
+    Image ID: badfe6af-7f19-4a20-87d0-63584705dec3
+    Instance Flavor: pfe-flv
+    Add Floating IP: False
+    Auto Udev: True
+    
+    App Resource Shell: vMX VFP
+
+![](screenshots/openstack-vfp0-1.png)
+![](screenshots/openstack-vfp0-2.png)
+![](screenshots/openstack-vfp0-3.png)
+![](screenshots/openstack-vfp0-4.png)
+
+ 
+If you get these values from the OpenStack web GUI, always be sure you have the right id. 
+CloudShell asks for network in some places and subnet in others.
 In general, don't trust UUIDs you see in the URL bar &mdash; instead look in the body of the details page.
 
 
 
-#### 
 
  
  
