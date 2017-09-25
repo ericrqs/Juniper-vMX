@@ -278,7 +278,307 @@ the Internal Network Service attribute on the vMX template resource.
     
 ### OpenStack-specific
 
-Note: Tested on Newton only
+#### OpenStack system configuration
+
+Tested configuration:
+
+    CentOS Linux release 7.3.1611  (Core)
+    Four physical NICs: enp3s0f0 enp3s0f1 enp4s0f0 enp4s0f1
+    OpenStack Newton
+    
+Note: vMX is very sensitive to OpenStack network settings. If the `128.0.0.0` network is not working, 
+the VCP will not detect the VFP and will not show interfaces like `ge-0/0/0`. Even when `ge-0/0/0` appears,
+actual traffic may not be able to pass through the VFP interface.
+
+After a lot of trial and error, we found the following combination of settings that works under OpenStack Newton.
+This is needed even if deploying manually with the official Juniper Heat scripts. We would appreciate any further insight or guidance.
+
+- Firewall settings: security groups enabled in two places, specific driver selections:
+    - `ml2_conf.ini`
+        - `firewall_driver = None`
+        - `enable_security_group = True`
+    -  `openvswitch_agent.ini`
+        - `firewall_driver = openvswitch`
+        - `enable_security_group = True`
+- We _enable_ the `port_security` plugin in order to be able to _disable_ port security on the `128.0.0.0` network ports (programmatically)
+- When we create the `128.0.0.0` network and ports, we
+    - turn off security groups
+    - disable port security 
+- Ensure that the MTU on the `128.0.0.0` network is 1500 or greater. The bytes stolen by VXLAN encapsulation are enough to break the communication between VCP and VFP, 
+and we don't know how to reconfigure either one to reduce their MTUs. We made the MTU 9000 systemwide, but it might be possible to increase it only 
+for the `128.0.0.0` networks.
+- Change the default security group to be totally permissive for IPv4 ICMP, TCP, UDP inbound and outbound. This may not be necessary at all.
+
+
+    
+    systemctl disable firewalld
+    systemctl stop firewalld
+    systemctl disable NetworkManager
+    systemctl stop NetworkManager
+    systemctl enable network
+    systemctl start network
+    
+    yum install -y centos-release-openstack-newton
+
+    yum update -y
+    yum install -y openstack-packstack
+
+    time packstack --allinone --provision-demo=n --os-neutron-ovs-bridge-mappings=extnet:br-ex,physnet1:br-vlan --os-neutron-ovs-bridge-interfaces=br-ex:enp3s0f0,br-vlan:enp4s0f0 --os-neutron-ml2-type-drivers=vxlan,flat,vlan --os-heat-install=y --cinder-volumes-size=200G
+    
+    
+The machine starts with a static IP on enp3s0f0. 
+
+Packstack will create an OpenvSwitch bridge `br-ex`, move ethernet interface `enp3s0f0` under it, 
+and move the static IP onto `br-ex`. `br-ex` will be used for the flat network, named `extnet` within OpenStack. 
+
+It will also create an OVS bridge `br-vlan` and move `enp4s0f0` under it. This will be used for the OpenStack VLAN network named `physnet1`. 
+
+enp4s0f0 is connected to a trunked port on the switch.    
+    
+We enable flat, VLAN, and VXLAN networkng. 
+
+Packstack will create 
+
+
+Set the MTU to a value greater than 1500. This is because the vMX `128.0.0.0` network fails silently when the MTU is reduced below 1500 by a VXLAN network. 
+It might be possible to reduce the MTU in a more limited scope.  
+
+    vi /etc/neutron/neutron.conf
+
+    [DEFAULT]
+    # ...
+    global_physnet_mtu = 9000
+
+
+Configure MTU and VLANs range. Enable specific security group and firewall settings critical for vMX communication to work. 
+
+    vi /etc/neutron/plugins/ml2/ml2_conf.ini 
+
+    # ...
+    path_mtu = 9000
+    extension_drivers = port_security
+        
+    # ...
+    
+    [ml2_type_vlan]
+    # change
+    network_vlan_ranges = 
+    # to
+    network_vlan_ranges = physnet1:48:60
+
+    # ...
+    [securitygroup]
+    firewall_driver = None
+    enable_security_group = True
+
+More critical firewall and security group settings:
+
+    vi /etc/neutron/plugins/ml2/openvswitch_agent.ini
+    # ...
+    firewall_driver = openvswitch
+    enable_security_group = True
+
+
+Enable serial console:
+
+    vi /etc/nova/nova.conf
+    
+    [serial_console]
+    enabled=true
+    port_range=10000:20000
+    
+    base_url=ws://192.168.137.201:6083/
+    proxyclient_address=192.168.137.201
+    serialproxy_host=0.0.0.0
+    serialproxy_port=6083
+    
+where `192.168.137.201` represents the main static IP of the machine.
+
+Install the serial console plugin:
+
+    yum install -y openstack-nova-serialproxy
+    ln -s /usr/lib/systemd/system/openstack-nova-serialproxy.service /etc/systemd/system/multi-user.target.wants/openstack-nova-serialproxy.service
+
+The serial console is needed by the Quali automation. Note that enabling the serial console will disable the 
+console log data that normally appears in the OpenStack GUI.
+
+
+Restart relevant services:
+
+    service neutron-server restart
+    service neutron-dhcp-agent.service restart
+    service neutron-l3-agent.service restart
+    service neutron-metadata-agent.service restart
+    service neutron-metering-agent.service restart
+    service neutron-openvswitch-agent.service restart
+    service neutron-ovs-cleanup.service restart
+    service neutron-server.service restart
+    
+    service openstack-nova-compute.service restart
+    service openstack-nova-api.service restart
+    service openstack-nova-cert.service restart
+    service openstack-nova-conductor.service restart
+    service openstack-nova-consoleauth.service restart
+    service openstack-nova-novncproxy.service restart
+    service openstack-nova-scheduler.service restart
+    service openstack-nova-serialproxy restart
+    
+You can also reboot instead. 
+
+    . keystonerc_admin
+    
+    neutron net-create public --shared --provider:physical_network extnet --provider:network_type flat --router:external
+
+    neutron subnet-create public 192.168.137.0/24 --name public-subnet --allocation-pool start=192.168.137.231,end=192.168.137.240 --gateway=192.168.137.1 --enable_dhcp=False
+
+    neutron net-create mgmt
+    neutron subnet-create mgmt 63.0.0.0/24 --name mgmt-subnet --allocation-pool start=63.0.0.10,end=63.0.0.100 --gateway=63.0.0.1 --enable_dhcp=True
+
+    
+    neutron net-create e
+    neutron subnet-create e 53.0.0.0/24 --name e-subnet --allocation-pool start=53.0.0.10,end=53.0.0.100 --gateway=53.0.0.1 --enable_dhcp=True
+
+Create a router with `public` as the external network and add a port on the `mgmt` network.
+
+Change the default security group to allow all ingress and egress traffic for ICMP, TCP, and UDP. You might have
+a way to use a more limited scope.
+
+
+Install a Cirros image to test the infrastructure:
+
+    curl http://download.cirros-cloud.net/0.3.4/cirros-0.3.4-x86_64-disk.img | glance          image-create --name='cirros image' --visibility=public --container-format=bare --disk-format=qcow2
+
+
+Import the Juniper VCP and VFP images:
+ 
+    glance image-create --name vcp-img --file junos-vmx-x86-64-17.3R1.10.qcow2 --disk-format qcow2 --container-format bare --property hw_cdrom_bus=ide --property hw_disk_bus=ide --property hw_vif_model=virtio
+    glance image-create --name vfp-img --file vFPC-20170810.img --disk-format raw --container-format bare --property hw_cdrom_bus=ide --property hw_disk_bus=ide --property hw_vif_model=virtio
+
+Create VCP and VFP flavors:
+
+    nova flavor-create --is-public true re-flv auto 4096 28 2
+    nova flavor-create --is-public true pfe-flv auto 4096 4 3
+
+Deploy the VCP and VFP to make sure the system is working:
+
+    n=81
+    net128name="n128_$n"
+    net128subnetname="${net128name}-subnet"
+    vcpname="vcp$n"
+    vfpname16="vfp16-$n"
+    port1name="vmx128-${n}-1"
+    port16name="vmx128-${n}-16"
+    
+    neutron  net-create $net128name
+    net128id=$(neutron net-show $net128name -c id -f value)
+    neutron subnet-create --allocation-pool start=128.0.0.1,end=128.0.0.254  --disable-dhcp --no-gateway  --name $net128subnetname $net128name 128.0.0.0/24
+    
+    neutron  port-create --name $port1name --fixed-ip subnet_id=${net128subnetname},ip_address=128.0.0.1   $net128name
+    port1id=$(neutron port-show $port1name -c id -f value)
+    neutron  port-update $port1id --no-security-groups
+    neutron port-update $port1id --port-security-enabled=False
+    
+    
+    neutron  port-create --name $port16name --fixed-ip subnet_id=${net128subnetname},ip_address=128.0.0.16  $net128name 
+    port16id=$(neutron port-show $port16name -c id -f value)
+    neutron port-update $port16id --no-security-groups
+    neutron port-update $port16id --port-security-enabled=False
+    
+    
+    
+    nova boot  --flavor re-flv \
+     --image vcp-img \
+     --config-drive True \
+     --nic net-name=public \
+     --nic port-id=$port1id \
+     --meta vm_chassisname=chassis-$vcpname \
+     --meta vm_chassname=chassis-$vcpname \
+     --meta hostname=host-$vcpname \
+     --meta netmask=24 \
+     --meta vm_instance=0 \
+     --meta vm_is_virtual=1 \
+     --meta console=vidconsole \
+     --meta vm_i2cid=0xBAA \
+     --meta vm_retype=RE-VMX \
+     --meta vm_ore_present=0 \
+     --meta hw.pci.link.0x60.irq=10 \
+     --meta vm_chassis_i2cid=161 \
+     --meta vmtype=0 \
+     --meta vmchtype=mx240 \
+     ${vcpname}-orig
+    
+    
+    nova  boot \
+     --flavor pfe-flv \
+     --image vfp-img \
+     --nic net-name=mgmt \
+     --nic port-id=$port16id \
+     --nic net-name=e \
+     $vfpname16
+    
+    
+Follow the boot messages in the interactive console of the VCP. Note that there will be no data in the Log tab
+because the serial console plugin is enabled.
+ 
+Wait about 10 minutes. For much of this time, there will be nothing on the console because the first VCP boot prints
+only to the serial console. Eventually it should start to print bright white text and FreeBSD boot messages. 
+    
+Log in to the console of the VCP (root, no password) and do `halt`.
+
+Power off the VCP VM.
+
+Take a snapshot of the powered-off VCP called `vcpss`. This snapshot the image that will be used by Quali to 
+deploy the VCP, along with the vanilla VFP image that was imported.
+
+After you have validated the system and taken the snapshot `vcpss`, clean up the networks and VMs:
+
+    n=81
+    net128name="n128_$n"
+    net128subnetname="${net128name}-subnet"
+    vcpname="vcp$n"
+    vfpname16="vfp16-$n"
+    port1name="vmx128-${n}-1"
+    port16name="vmx128-${n}-16"
+    
+    nova delete $vcpname
+    nova delete ${vcpname}-orig
+    nova delete $vfpname16
+    neutron port-delete $port1name
+    neutron port-delete $port16name
+    neutron net-delete $net128id
+    
+
+Print out certain useful object ids that must be entered into CloudShell:
+
+    grep PASSWORD keystonerc_admin
+    neutron net-show mgmt -c id -f value
+    neutron subnet-show public-subnet -c id -f value
+    glance image-list | egrep 'vcpss|vfp-img'
+    
+You will need to provide the password for `admin` (or another privileged user you created), the 
+_network_ id of the network you want to use for management, the public flat _subnet_ id you want 
+to use for floating IPs, and the VCP and VFP image ids.
+
+
+
+
+
+Obtain certain details  
+
+Create an OpenStack cloud provider resource:
+
+    Family: Cloud Provider
+    Model: OpenStack
+    Driver: OpenStack Shell Driver
+    
+    User Name: admin
+    Password: 4d8762137921447b
+    
+    Controller URL: http://192.168.137.201:5000/v3
+    Floating IP Subnet ID: 
+    OpenStack Domain Name: default
+    
+
 
 #### 
 
@@ -297,6 +597,7 @@ in parallel to standard app deployments.
 
 hook_setup calls vMX VNF Deployment Resource Driver.orch_hook_during_provisioning.
 
+It performs the following series of tasks automatically: 
 1. Add new vCP app and vFP app(s) to the reservation, with names based on the template resource name
 1. Deploy the vCP and vFP(s) using DeployAppToCloudProviderBulk, producing deployed resources of type vMX VCP and vMX VFP
 1. Platform-specific:
@@ -304,11 +605,12 @@ hook_setup calls vMX VNF Deployment Resource Driver.orch_hook_during_provisionin
         - Add an auto VLAN ('Auto VLAN' or the service name specified in the Internal Network Service attribute) and connect it to NIC #2 of vCP and vFP(s) 
         - With pyVmomi, add a serial console to the vCP to be accessed through an ESXi port in the range 9300..9330 (managed by a CloudShell number allocation pool)
         - Telnet to vCP serial console
-        - Log in as root (no password)
-        - Set root password
-        - Create username and set password according to resource template attributes
-        - Enable SSH
-        - Enable DHCP or set static IP on management interface fxp0.0, and determine the final management IP
+            - If the console gets stuck at a boot prompt, reset the VM, up to 5 times
+            - Log in as root (no password)
+            - Set root password
+            - Create username and set password according to resource template attributes
+            - Enable SSH
+            - Enable DHCP or set static IP on management interface fxp0.0, and determine the final management IP
         - With pyVmomi, determine the mapping from vNIC index (e.g. Network adapter 3) to MAC address
     - OpenStack
         - Power off the vCP and vFP(s)
@@ -317,12 +619,12 @@ hook_setup calls vMX VNF Deployment Resource Driver.orch_hook_during_provisionin
         - Create a dummy network and attach it to the vFPs (to be removed later in the deployment)
         - Power on the vCP and vFP(s) 
         - Connect via a WebSocket to the vCP serial console
-        - Log in as root (no password)
-        - Set root password
-        - Create username and set password according to resource template attributes
-        - Enable SSH
-        - Enable DHCP on management interface fxp0.0
-        - Determine the DHCP management IP
+            - Log in as root (no password)
+            - Set root password
+            - Create username and set password according to resource template attributes
+            - Enable SSH
+            - Enable DHCP on management interface fxp0.0
+            - Determine the DHCP management IP
 1. Wait until the vCP is reachable by SSH
 1. SSH to the vCP as root using the new password
 1. In the vCP's FreeBSD shell, run 'ifconfig' and wait until all expected interface names appear, such as ge-0-0-0. The first number in the interface name indicates the card number. If 3 vFPs were requested, wait until interfaces with names like ge-0-x-x, ge-1-x-x, and ge-2-x-x all appear. This will indicate that the handshake between the vCP and each vFP has taken place. Record the MAC addresses of all ge-x-x-x interfaces of the vCP. These will be MAC addresses on vFP VMs.
@@ -550,4 +852,3 @@ same ApplyConnectivityChanges batch
 - It would break if the system stopped translating a ConnectRoutesInReservation call into a single batch 
 call to ApplyConnectivityChanges per L2 provider
 
- 
