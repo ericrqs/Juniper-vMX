@@ -632,88 +632,107 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
                     vmxip = a.Value
                     break
 
-        for _ in range(36):
+        for attempt in range(6):
+            for _ in range(36):
+                try:
+                    logger.info('SSH attempt...')
+                    client = paramiko.SSHClient()
+                    client.load_system_host_keys()
+                    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+                    client.connect(vmxip, port=22, username=vmxuser, password=vmxpassword, timeout=10)
+                    client.close()
+                    break
+                except:
+                    logger.info('SSH failed, sleeping 10 seconds')
+                    sleep(10)
+            else:
+                raise Exception('Could not connect to %s (%s) after 5 minutes. Check the DHCP server and management network connectivity.' % (deployed_vcp[0], vmxip))
             try:
                 logger.info('SSH attempt...')
                 client = paramiko.SSHClient()
                 client.load_system_host_keys()
                 client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                client.connect(vmxip, port=22, username=vmxuser, password=vmxpassword, timeout=10)
+                client.connect(vmxip, port=22, username='root', password=vmxpassword, timeout=10)
+                logger.info('SSH connected')
+                ch = client.invoke_shell()
+
+                mac2ifname = {}
+                gotallcards = False
+                isfirst = True
+                for _ in range(12):
+                    mac2ifname0 = {}
+                    if isfirst:
+                        cmdpatt = [
+                            ('', '#'),
+                            ('ifconfig', '#'),
+                        ]
+                        isfirst = False
+                    else:
+                        cmdpatt = [
+                            ('ifconfig', '#'),
+                        ]
+                    for cmd, patt in cmdpatt:
+                        if cmd:
+                            logger.info('ssh send %s' % cmd)
+                            ch.send('%s\n' % cmd)
+                        buf = ''
+                        for ll in range(10):
+                            b = ch.recv(10000)
+                            logger.info('ssh recv: %s' % str(b))
+                            if b:
+                                buf += b
+                            if patt in buf:
+                                break
+                            if not b:
+                                break
+                        ifconfig = buf
+
+                    tt = re.sub(r'''[^->'_0-9A-Za-z*:;,.#@/"(){}\[\] \t\r\n]''', '_', ifconfig)
+                    while tt:
+                        api.WriteMessageToReservationOutput(resid, tt[0:500])
+                        tt = tt[500:]
+                    m = re.findall(
+                        r'^((fe|ge|xe|et)-\d+/\d+/\d+).*?([0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+)',
+                        ifconfig, re.DOTALL + re.MULTILINE)
+                    for j in m:
+                        ifname, _, mac = j
+                        mac = mac.lower()
+                        mac2ifname0[mac] = ifname
+                    logger.info('mac2ifname0 = %s' % mac2ifname0)
+                    seencards = set()
+                    for mac, ifname in mac2ifname0.iteritems():
+                        seencards.add(int(ifname.split('-')[1].split('/')[0]))
+
+                    if len(seencards) >= len(deployed_vfp):
+                        mac2ifname = mac2ifname0
+                        gotallcards = True
+
+                        break
+
+                    api.WriteMessageToReservationOutput(resid, 'Still waiting for %d card(s)' % (len(deployed_vfp)-len(seencards)))
+                    sleep(5)
                 client.close()
+            except Exception as e:
+                logger.info('Exception during SSH session: %s' % str(e))
+            logger.info('SSH disconnected')
+            if gotallcards:
                 break
-            except:
-                logger.info('SSH failed, sleeping 10 seconds')
+
+            logger.info('%d cards were not discovered within 3 minutes - rebooting VCP' % len(deployed_vfp))
+            api.ExecuteResourceConnectedCommand(resid, deployed_vcp[0], 'PowerOff', 'power')
+            sleep(10)
+            api.ExecuteResourceConnectedCommand(resid, deployed_vcp[0], 'PowerOn', 'power')
+            sleep(10)
+            for vfp in deployed_vfp:
+                api.ExecuteResourceConnectedCommand(resid, vfp, 'PowerOff', 'power')
                 sleep(10)
+                api.ExecuteResourceConnectedCommand(resid, vfp, 'PowerOn', 'power')
+                sleep(10)
+
         else:
-            raise Exception('Could not connect to %s (%s) after 5 minutes. Check the DHCP server and management network connectivity.' % (deployed_vcp[0], vmxip))
+            raise Exception('%d cards were not discovered after 10 minutes in 5 attempts' % len(deployed_vfp))
 
-        logger.info('SSH attempt...')
-        client = paramiko.SSHClient()
-        client.load_system_host_keys()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        client.connect(vmxip, port=22, username='root', password=vmxpassword, timeout=10)
-        logger.info('SSH connected')
-        ch = client.invoke_shell()
 
-        mac2ifname = {}
-        gotallcards = False
-        isfirst = True
-        for _ in range(120):
-            mac2ifname0 = {}
-            if isfirst:
-                cmdpatt = [
-                    ('', '#'),
-                    ('ifconfig', '#'),
-                ]
-                isfirst = False
-            else:
-                cmdpatt = [
-                    ('ifconfig', '#'),
-                ]
-            for cmd, patt in cmdpatt:
-                if cmd:
-                    logger.info('ssh send %s' % cmd)
-                    ch.send('%s\n' % cmd)
-                buf = ''
-                for ll in range(10):
-                    b = ch.recv(10000)
-                    logger.info('ssh recv: %s' % str(b))
-                    if b:
-                        buf += b
-                    if patt in buf:
-                        break
-                    if not b:
-                        break
-                ifconfig = buf
-
-            tt = re.sub(r'''[^->'_0-9A-Za-z*:;,.#@/"(){}\[\] \t\r\n]''', '_', ifconfig)
-            while tt:
-                api.WriteMessageToReservationOutput(resid, tt[0:500])
-                tt = tt[500:]
-            m = re.findall(
-                r'^((fe|ge|xe|et)-\d+/\d+/\d+).*?([0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+)',
-                ifconfig, re.DOTALL + re.MULTILINE)
-            for j in m:
-                ifname, _, mac = j
-                mac = mac.lower()
-                mac2ifname0[mac] = ifname
-            logger.info('mac2ifname0 = %s' % mac2ifname0)
-            seencards = set()
-            for mac, ifname in mac2ifname0.iteritems():
-                seencards.add(int(ifname.split('-')[1].split('/')[0]))
-
-            if len(seencards) >= len(deployed_vfp):
-                mac2ifname = mac2ifname0
-                gotallcards = True
-
-                break
-
-            api.WriteMessageToReservationOutput(resid, 'Still waiting for %d card(s)' % (len(deployed_vfp)-len(seencards)))
-            sleep(5)
-        client.close()
-        logger.info('SSH disconnected')
-        if not gotallcards:
-            raise Exception('%d cards were not discovered within 10 minutes' % len(deployed_vfp))
 
         for kj in deployed_vfp:
             api.UpdateResourceAddress(kj, kj)

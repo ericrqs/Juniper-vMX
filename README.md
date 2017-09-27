@@ -545,7 +545,7 @@ You can also perform a further network test:
     login: root
     cli
     configure
-    set interfaces ge-0/0/0 unit 0 family inet ipv4 address 53.0.0.123/24
+    set interfaces ge-0/0/0 unit 0 family inet address 53.0.0.123/24
     commit
     exit
 _Note: This IP `53.0.0.123` must match the value that OpenStack assigned to the VFP VM on the `e` network_    
