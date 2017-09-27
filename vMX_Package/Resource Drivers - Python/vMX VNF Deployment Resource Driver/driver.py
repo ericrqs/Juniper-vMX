@@ -648,6 +648,7 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
             else:
                 raise Exception('Could not connect to %s (%s) after 5 minutes. Check the DHCP server and management network connectivity.' % (deployed_vcp[0], vmxip))
             try:
+                gotallcards = False
                 logger.info('SSH attempt...')
                 client = paramiko.SSHClient()
                 client.load_system_host_keys()
@@ -657,7 +658,6 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
                 ch = client.invoke_shell()
 
                 mac2ifname = {}
-                gotallcards = False
                 isfirst = True
                 for _ in range(12):
                     mac2ifname0 = {}
@@ -718,7 +718,10 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
             if gotallcards:
                 break
 
-            logger.info('%d cards were not discovered within 3 minutes - rebooting VCP' % len(deployed_vfp))
+            msg = '%d card(s) not discovered within 3 minutes - rebooting VCP' % len(deployed_vfp)
+            logger.info(msg)
+            api.WriteMessageToReservationOutput(resid, msg)
+
             api.ExecuteResourceConnectedCommand(resid, deployed_vcp[0], 'PowerOff', 'power')
             sleep(10)
             api.ExecuteResourceConnectedCommand(resid, deployed_vcp[0], 'PowerOn', 'power')
