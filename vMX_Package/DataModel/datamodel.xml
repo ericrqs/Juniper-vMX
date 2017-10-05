@@ -82,12 +82,12 @@
             </Rules>
         </AttributeInfo>
 
-        <AttributeInfo Name="VM Port Full Name" Description="For a fake L2 port, full path of the corresponding port resource under the deployed VNF card VM" Type="String" DefaultValue="" IsReadOnly="false">
+        <AttributeInfo Name="VM Name" Description="For a fake L2 port, name of the corresponding deployed VNF card VM" Type="String" DefaultValue="" IsReadOnly="false">
             <Rules Override="false">
                 <Rule Name="Configuration"/>
             </Rules>
         </AttributeInfo>
-        <AttributeInfo Name="VM Port Full Address" Description="For a fake L2 port, full address of the corresponding port resource under the deployed VNF card VM" Type="String" DefaultValue="" IsReadOnly="false">
+        <AttributeInfo Name="VM Port vNIC Name" Description="For a fake L2 port, NIC name (e.g. 1 for vSphere Network adapter 1) on the cloud provider of the corresponding port resource under the deployed VNF card VM" Type="String" DefaultValue="" IsReadOnly="false">
             <Rules Override="false">
                 <Rule Name="Configuration"/>
             </Rules>
@@ -651,16 +651,16 @@
             <Models>
                 <ResourceModel Name="VNF Connectivity Manager L2 Port" Description="" SupportsConcurrentCommands="false">
                     <AttachedAttributes>
-                        <AttachedAttribute Name="VM Port Full Name" IsOverridable="true" IsLocal="true">
+                        <AttachedAttribute Name="VM Name" IsOverridable="true" IsLocal="true">
                             <AllowedValues/>
                         </AttachedAttribute>
-                        <AttachedAttribute Name="VM Port Full Address" IsOverridable="true" IsLocal="true">
+                        <AttachedAttribute Name="VM Port vNIC Name" IsOverridable="true" IsLocal="true">
                             <AllowedValues/>
                         </AttachedAttribute>
                     </AttachedAttributes>
                     <AttributeValues>
-                        <AttributeValue Name="VM Port Full Name" Value=""/>
-                        <AttributeValue Name="VM Port Full Address" Value=""/>
+                        <AttributeValue Name="VM Name" Value=""/>
+                        <AttributeValue Name="VM Port vNIC Name" Value=""/>
                     </AttributeValues>
                     <ParentModels>
                         <ParentModelName>VNF Connectivity Manager Virtual L2</ParentModelName>

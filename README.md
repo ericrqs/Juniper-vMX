@@ -192,6 +192,7 @@ Properties... and enable "VM serial port connected over network" (not "VM serial
 connected to vSPC"). If needed, you can click the Firewall button while standing on 
 "VM serial port connected over network" and enable the access only for the IP of the execution server. 
 ![](screenshots/esxi-serial.png)
+![](screenshots/esxi-serial-web.png)
 
 
 #### Controller
@@ -223,26 +224,26 @@ Be sure to set Wait for IP to False. If it is not visible, make the setting a us
 
 #### Cards
 
+Import the VFP OVA. Ensure that the VFP VM has at least 4096MB of RAM. Otherwise it will fail to handshake with the VCP.
+
 Take a snapshot of the card VM immediately with a name like `ss`. 
 
-Then immediately take another snapshot called `card0`. This snapshot will be called `ss/card0`.
+For every card you want to deploy, including card 0, you must set the card id on the VM
+and take a snapshot. The factory image may start with card id 3, which will crash the automation.
 
-If you want to deploy cards beyond card 0, you must create additional snapshots of the 
-card VM after setting the card id in a file on the VM.
-
-For each card beyond card 0:
+For each card including 0:
 - Revert the VM to the first snapshot `ss`
 - Boot the VM
 - Log in as root/root
-- Write the desired card id to a file called `/var/jnx/card/local/slot`. For example, for card #1:
+- Write the desired card id to a file called `/var/jnx/card/local/slot`. For example, for card 0:
 
         mkdir -p /var/jnx/card/local
-        echo 1 > /var/jnx/card/local/slot
+        echo 0 > /var/jnx/card/local/slot
         reboot
         
 - Log in again as root/root
 - Ensure that the card id file has influenced the IP on interface 'int' using `ifconfig`. 
-For example for card 1 this should display `128.0.0.17`.
+For example for card 1 it should display `128.0.0.17`.
         
 - Shut down the VM OS: `halt`
        
@@ -750,16 +751,13 @@ It performs the following series of tasks automatically:
 1. Create a virtual L2 switch
     - Create one port subresource for each autoloaded vMX port
         - Name: port#, an incremented number starting from 0
-        - Attribute VM Port Full Name with the full resource name of the autoloaded vMX port
-        - Attribute VM Port Full Address with the full address path of the autoloaded vMX port
+        - Attribute `VM Name` with the resource name of the corresponding card VM
+        - Attribute `VM Port vNIC Name`
+            - for vSphere, the id of the NIC (e.g. 3 for Network adapter 3) that has the MAC that matches the autoloaded vMX port
+            - for OpenStack, the last number in the port address, e.g. 3 for ge-0-0-3
 1. Set physical connections between:
     - each new vMX resource port
     - its assigned virtual L2 port
-1. Create subresources under each vMX VFP deployed app resource:
-    - Names like ge-x-x-X
-    - Requested vNIC Name:
-        - for vSphere, using the translation map ge-x-x-X -> MAC address -> Network adapter Y
-        - for OpenStack, the last number in the port name ge-x-x-X
 1. Move connectors from the vMX template resource to the new vMX resource
 1. Add a service VNF Cleanup Service with an attached hook vnf_cleanup_orch_hook_post_teardown
 1. Platform-specific:
@@ -777,10 +775,22 @@ autoloaded vMX resource
 ### Virtual L2 operation
 
 Connectors to ports on a vMX resource are translated into cloud provider calls 
-that reconfigure the underlying VMs
+that reconfigure the underlying VMs.
 
 #### Structure
 Resources like the following examples will exist after deploying from a vMX template resource that requested 2 cards:
+
+- In vCenter:
+    - ...
+    - `vMX vSphere 1_4253_vfp0_0733d592` Network adapter 4 has MAC `00:50:56:be:50:cb`
+    - ...
+    - `vMX vSphere 1_4253_vfp0_0733d592` Network adapter 7 has MAC `00:50:56:be:64:ad`
+    - ...
+    - `vMX vSphere 1_4253_vfp1_12345678` Network adapter 3 has MAC `00:50:56:be:64:45`
+    - ...
+    - `vMX vSphere 1_4253_vfp1_12345678` Network adapter 6 has MAC `00:50:56:be:50:23`
+    - ...
+    
 
 - vMX vSphere 1_4253 (Router/Juniper JunOS Router or CS_Router/Juniper JunOS Router 2G) (autoloaded)
     - Chassis 1
@@ -803,36 +813,26 @@ Resources like the following examples will exist after deploying from a vMX temp
 - vMX vSphere 1_4253_vcp_8998ee87 (VNF Card/vMX VCP)
     - No subresources
 
-
 - vMX vSphere 1_4253_vfp0_0733d592 (VNF Card/vMX VFP)
-    - ge-0-0-0
-        - Requested vNIC Name: 4
-    - ge-0-0-1
-        - Requested vNIC Name: 5
-    - ...
+    - No subresources
 
 - vMX vSphere 1_4253_vfp1_12345678 (VNF Card/vMX VFP)
-    - ge-1-0-0
-        - Requested vNIC Name: 4
-    - ge-1-0-1
-        - Requested vNIC Name: 5
-    - ...
-
+    - No subresources
 
 - vMX vSphere 1_4253 L2 (Switch/VNF Connectivity Manager Virtual L2)
     - port0
-        - VM Port Full Address: vMX vSphere 1_4253_vfp0_0733d592/ge-0-0-0
-        - VM Port Full Name: vMX vSphere 1_4253_vfp0_0733d592/ge-0-0-0
+        - VM Name: vMX vSphere 1_4253_vfp0_0733d592
+        - VM Port vNIC Name: 4
     - port1
-        - VM Port Full Address: vMX vSphere 1_4253_vfp0_0733d592/ge-0-0-1
-        - VM Port Full Name: vMX vSphere 1_4253_vfp0_0733d592/ge-0-0-1
+        - VM Name: vMX vSphere 1_4253_vfp0_0733d592
+        - VM Port vNIC Name: 7
     - ...
     - port10
-        - VM Port Full Address: vMX vSphere 1_4253_vfp1_0733d592/ge-1-0-0
-        - VM Port Full Name: vMX vSphere 1_4253_vfp1_0733d592/ge-1-0-0
+        - VM Name: vMX vSphere 1_4253_vfp0_0733d592
+        - VM Port vNIC Name: 6
     - port11
-        - VM Port Full Address: vMX vSphere 1_4253_vfp1_0733d592/ge-1-0-1
-        - VM Port Full Name: vMX vSphere 1_4253_vfp1_0733d592/ge-1-0-1
+        - VM Name: vMX vSphere 1_4253_vfp0_0733d592
+        - VM Port vNIC Name: 3
     - ...
    
 These physical connections will be set between the virtual L2 and the main vMX resource:
@@ -883,22 +883,13 @@ Each connection request contains many details like a VLAN assignment. The connec
 kept mostly as-is, but certain information is overwritten or added.
 
 
-Attributes of the L2 port resource:
+Attributes of the port resource on the virtual L2:
 
     Resource: vMX vSphere 1_4253 L2/port0
-    VM Port Full Name = vMX vSphere 1_4253_vfp0_0733d592/ge-0-0-0
-    VM Port Full Address = vMX vSphere 1_4253_vfp0_0733d592/ge-0-0-0
-
-Attributes of the port under the deployed VM card:
-
-    Resource: vMX vSphere 1_4253_vfp0_0733d592/ge-0-0-0
-    Requested vNIC Name = 4
+    VM Name = vMX vSphere 1_4253_vfp0_0733d592
+    VM Port vNIC Name = 4
     
 
-The base VM card resource is:
-
-    vMX vSphere 1_4253_vfp0_0733d592
-    
 VM UUID for both vSphere and OpenStack:
  
     api.GetResourceDetails('vMX vSphere 1_4253_vfp0_0733d592').VmDetails.UID
@@ -908,8 +899,8 @@ The virtual L2 driver updates the connection request JSON:
     
     ...
     "actionTarget": {
-        "fullName": "vMX vSphere 1_4253_vfp0_0733d592/ge-0-0-0",
-        "fullAddress": "vMX vSphere 1_4253_vfp0_0733d592/ge-0-0-0"
+        "fullName": "vMX vSphere 1_4253_vfp0_0733d592",
+        "fullAddress": "vMX vSphere 1_4253_vfp0_0733d592"
         ...
     },
     "customActionAttributes": [
@@ -940,7 +931,7 @@ and calls the cloud provider:
     
 A connectivity request with multiple actions is split into a series of connection requests with a single action each. 
 They are sent to the cloud provider in ascending order by Vnic Name. This is because the OpenStack cloud provider
-determines the NIC not from Vnic Name but from the order requests are sent.
+currently determines the NIC not from Vnic Name but from the order requests are sent.
 
 The JSON output of the cloud providers ApplyConnectivityChanges calls is accumulated and bundled as the 
 output of the virtual L2 ApplyConnectivityChanges. This is critical in order for the system to set attributes 
@@ -955,7 +946,9 @@ the vMX software, or both.
 Note these limitations under OpenStack:
 - Interfaces must be chosen starting from the lowest on a card, with no gaps. For example, two connections to the 
 first card must use ge-0-0-0 and ge-0-0-1 instead of arbitrary ports like ge-0-0-3 and ge-0-0-6.
-- Disconnecting one connection and connecting a new one will not work in general. 
+- Disconnecting one connection and then connecting a new one will not work in general. You could disconnect ge-0-0-0
+and try to reconnect ge-0-0-0, but the system would pick something like ge-0-0-5, one greater than the highest 
+interface previously added on that VM.
 The only safe way to disconnect some connection and later connect some connection is to run Disconnect on all
 connectors for that card and then reconnect all of them, either manually doing Connect on each one in 
 ascending order (ge-0-0-0 first) or making a bulk call ConnectRoutesInReservation that will send them all to 

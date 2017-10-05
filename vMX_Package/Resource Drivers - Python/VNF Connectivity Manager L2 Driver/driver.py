@@ -48,16 +48,13 @@ class VnfConnectivityManagerL2Driver(ResourceDriverInterface, NetworkingResource
         for action in o['driverRequest']['actions']:
             targetrd = api.GetResourceDetails(action['actionTarget']['fullName'])
 
-            portfullname = [a.Value for a in targetrd.ResourceAttributes if a.Name == 'VM Port Full Name'][0]
-            portfulladdr = [a.Value for a in targetrd.ResourceAttributes if a.Name == 'VM Port Full Address'][0]
+            vmname = [a.Value for a in targetrd.ResourceAttributes if a.Name == 'VM Name'][0]
+            nicno = [a.Value for a in targetrd.ResourceAttributes if a.Name == 'VM Port vNIC Name'][0]
 
-            vmrd = api.GetResourceDetails(portfullname.split('/')[0])
-            action['actionTarget']['fullName'] = portfullname
-            action['actionTarget']['fullAddress'] = portfulladdr
+            action['actionTarget']['fullName'] = vmname
+            action['actionTarget']['fullAddress'] = vmname
 
-            portrd = api.GetResourceDetails(portfullname)
-            nicno = [a.Value for a in portrd.ResourceAttributes if a.Name == 'Requested vNIC Name'][0]
-
+            vmrd = api.GetResourceDetails(vmname)
             cpname = vmrd.VmDetails.CloudProviderFullName
             cpdetails = api.GetResourceDetails(cpname)
             vmuid = vmrd.VmDetails.UID
