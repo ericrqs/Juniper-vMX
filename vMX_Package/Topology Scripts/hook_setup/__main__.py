@@ -1,5 +1,6 @@
 import threading
 import traceback
+from time import time
 
 from cloudshell.core.logger.qs_logger import get_qs_logger
 from cloudshell.workflow.orchestration.sandbox import Sandbox
@@ -22,6 +23,7 @@ def f(sandbox2, hookpattern):
 
     logger.info('enter f %s' % hookpattern)
 
+    errors = []
     already = set()
     while True:
         # recheck reservation every time hooks in this phase were run, in case a hook changed the reservation
@@ -71,6 +73,7 @@ def f(sandbox2, hookpattern):
         for kind0, target0, funcname0 in to_run:
             def g(kind, target, funcname):
                 logger.info('entering thread %s %s %s' % (kind, target, funcname))
+                t0 = time()
                 already.add(target)
                 try:
                     if kind == 'SANDBOX':
@@ -78,12 +81,13 @@ def f(sandbox2, hookpattern):
                     else:
                         o = api.ExecuteCommand(resid, target, kind, funcname, [], True).Output
                     if o:
-                        notify('Hook %s.%s completed with output: %s' % (target, funcname, o))
+                        notify('Hook %s.%s completed in %d seconds with output: %s' % (target, funcname, time()-t0, o))
                     else:
-                        notify('Hook %s.%s completed' % (target, funcname))
+                        notify('Hook %s.%s completed in %d seconds' % (target, funcname, time()-t0))
                 except:
                     tb = traceback.format_exc()
-                    notify('Hook %s.%s threw exception: %s' % (target, funcname, tb))
+                    notify('Hook %s.%s threw exception after %d seconds: %s' % (target, funcname, time()-t0, tb))
+                    errors.append(tb)
                 logger.info('exiting thread %s %s %s' % (kind, target, funcname))
 
             th = threading.Thread(target=g,
@@ -95,6 +99,9 @@ def f(sandbox2, hookpattern):
         for th in threads:
             th.join()
 
+    if errors:
+        logger.info('Errors: %s' % errors)
+        raise Exception('Errors: %s' % errors)
     logger.info('exit f %s' % hookpattern)
 
 

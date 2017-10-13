@@ -4,10 +4,18 @@ from time import sleep, time
 
 from cloudshell.api.cloudshell_api import CloudShellAPISession
 
+toponame = 'vmx openstack 201'
+nthreads = 5
+
+
+def log(s):
+    with open(r'c:\programdata\qualisystems\stresstest.log', 'a') as ff:
+        ff.write(s + '\n')
+
 
 def f(jj):
     k = randint(0, 300)
-    print '%d: Sleeping %d seconds' % (jj, k)
+    log('%d: Sleeping %d seconds' % (jj, k))
     sleep(k)
     while True:
         t0 = time()
@@ -15,37 +23,40 @@ def f(jj):
         api = CloudShellAPISession('localhost', 'admin', 'admin', 'Global')
         try:
             id = api.CreateImmediateTopologyReservation(reservationName='vmx%d' % jj,
-                                                        topologyFullPath='vmx vsphere 202',
+                                                        topologyFullPath=toponame,
                                                         durationInMinutes=120,
                                                         owner='admin').Reservation.Id
-            for _ in range(70):
+            for _ in range(100):
                 rd = api.GetReservationDetails(id).ReservationDescription
 
-                if rd.SetupStage == 'Ended' or rd.ProvisioningStatus == 'Error':
-                    print '%d: %s Status=%s SetupStage=%s ProvisioningStatus=%s' % (jj, id, rd.Status, rd.SetupStage, rd.ProvisioningStatus)
+                log('%d: %s Status=%s SetupStage=%s ProvisioningStatus=%s' % (jj, id, rd.Status, rd.SetupStage, rd.ProvisioningStatus))
+                if rd.ProvisioningStatus == 'Error':
+                    fail = 'setup error'
+                    break
+                if rd.SetupStage == 'Ended':
                     break
                 sleep(10)
             else:
-                print '%d: Setup never finished, ending reservation %s' % (jj, id)
-                fail = 'setup fail'
+                log('%d: Setup never finished, ending reservation %s' % (jj, id))
+                fail = 'setup timeout'
 
             api.EndReservation(id)
 
             for _ in range(100):
                 rd = api.GetReservationDetails(id).ReservationDescription
                 if rd.Status == 'Completed':
-                    print '%d: %s Status=%s' % (jj, id, rd.Status)
+                    log('%d: %s Status=%s' % (jj, id, rd.Status))
                     break
                 sleep(10)
             else:
-                print '%d: Teardown never finished %s' % (jj, id)
+                log('%d: Teardown never finished %s' % (jj, id))
                 fail = 'teardown fail'
 
-            print '%d: Cycle (%s) finished in %d seconds' % (jj, str(fail), time()-t0)
+            log('%d: Cycle (%s) finished in %d seconds' % (jj, str(fail), time()-t0))
         except Exception as e:
-            print 'Exception: %s' % str(e)
+            log('Exception: %s' % str(e))
             sleep(randint(1, 30))
 
 
-for i in range(15):
+for i in range(nthreads):
     threading.Thread(target=f, args=(i,)).start()

@@ -335,6 +335,7 @@ def get_cloud_provider_attributes(api, resource):
                     pass
         rv[a.Name] = v
 
+    rv['ResourceName'] = cpd2.Name
     rv['ResourceAddress'] = cpd2.Address
     rv['ResourceFamily'] = cpd2.ResourceModelName
     rv['ResourceModel'] = cpd2.ResourceModelName
@@ -353,7 +354,7 @@ def get_details_of_deployed_app_resources(api, resid, app_aliases):
     rv = {}
     for r in rd.Resources:
         for d in app_aliases:
-            if r.Name.startswith(d + '_'):
+            if r.Name.startswith(d + '_') or r.Name.startswith(d + '-'):
                 rv[r.Name] = api.GetResourceDetails(r.Name)
     return rv
 
@@ -492,6 +493,15 @@ def delete_connectors(api, resid, connectors):
 
 
 def move_connectors_of(api, resid, oldresource, mapfunc, logger):
+    """
+
+    :param api: CloudShellAPISession
+    :param resid: str
+    :param oldresource: str
+    :param mapfunc: (str) -> (str) : full path of new connector endpoint from old endpoint
+    :param logger: Logger
+    :return:
+    """
     connectors = get_connectors_of(api, resid, oldresource)
     logger.info('All connectors before move: %s' % [(c.Source, c.Target) for c in connectors])
 
@@ -505,7 +515,7 @@ def move_connectors_of(api, resid, oldresource, mapfunc, logger):
             ab.append((a, b, c.Direction, c.Alias, c.Attributes))
             movehist.append((c.Source, c.Target, a, b))
         if c.Target.startswith(oldresource + '/'):
-            a, b = c.Source,mapfunc(c.Target)
+            a, b = c.Source, mapfunc(c.Target)
             ab.append((a, b, c.Direction, c.Alias, c.Attributes))
             movehist.append((c.Source, c.Target, a, b))
 
@@ -522,6 +532,21 @@ def move_connectors_of(api, resid, oldresource, mapfunc, logger):
 
 
 def create_fake_L2(api, fakel2name, vlantype, portfullpath2vmname_nicname):
+    """
+    Creates a fake L2 switch and physically connects its ports
+    to the specified user-facing VNF resource ports.
+
+    Stores the underlying VM name and NIC name on each L2 port.
+
+    The fake L2 driver will call the underlying cloud provider
+    when connections are performed on the user-facing ports.
+
+    :param api: CloudShellAPISession
+    :param fakel2name: str
+    :param vlantype: str : VLAN or VXLAN -- L2 switch resource must match the cloud provider
+    :param portfullpath2vmname_nicname: dict(str, (str, str)) : map user-facing VNF port full path to (vm name, nic name)
+    :return:
+    """
     api.CreateResource('Switch', 'VNF Connectivity Manager Virtual L2', fakel2name, '0')
     api.SetAttributeValue(fakel2name, 'Vlan Type', vlantype)
     api.UpdateResourceDriver(fakel2name, 'VNF Connectivity Manager L2 Driver')
@@ -631,6 +656,7 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
             api.DeployAppToCloudProviderBulk(resid, app_aliases)
 
             with Mutex(api, resid, logger):
+                logger.info('original app aliases = %s' % str(app_aliases))
                 vmname2details = get_details_of_deployed_app_resources(api, resid, app_aliases)
 
             deployed_vcp = sorted([x for x in vmname2details if 'vcp' in x])
@@ -639,25 +665,38 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
 
             logger.info('deployed apps = %s' % str(deployed))
 
-            vmxip, mac2nicname, netid50 = self.post_creation_vm_setup(api,
-                                                                      resid,
-                                                                      deployed,
-                                                                      deployed_vcp,
-                                                                      deployed_vfp,
-                                                                      internal_vlan_service_name,
-                                                                      requested_vmx_ip,
-                                                                      rootpassword,
-                                                                      userfullname,
-                                                                      username,
-                                                                      userpassword,
-                                                                      vmname2details,
-                                                                      vmx_resource,
-                                                                      logger)
+            vmxip, mac2nicname, netid50, cpname, tocleanup = self.post_creation_vm_setup(api,
+                                                                                         resid,
+                                                                                         deployed,
+                                                                                         deployed_vcp,
+                                                                                         deployed_vfp,
+                                                                                         internal_vlan_service_name,
+                                                                                         requested_vmx_ip,
+                                                                                         rootpassword,
+                                                                                         userfullname,
+                                                                                         username,
+                                                                                         userpassword,
+                                                                                         vmname2details,
+                                                                                         vmx_resource,
+                                                                                         logger)
+
+            try:
+                api.RemoveServicesFromReservation(resid, [vmx_resource + ' cleanup'])
+            except:
+                pass
+            api.AddServiceToReservation(resid, 'VNF Cleanup Service', vmx_resource + ' cleanup', [
+                AttributeNameValue('Resources to Delete', ','.join([
+                    vmx_resource,
+                    fakel2name
+                ])),
+                AttributeNameValue('Cloud Provider Objects to Delete', tocleanup),
+                AttributeNameValue('Cloud Provider Name', cpname),
+            ])
 
             if not vmxip:
                 raise Exception('VCP did not receive an IP (requested %s)' % (requested_vmx_ip))
 
-            if not self.wait_for_ssh_up(vmxip, vmxuser, vmxpassword, logger):
+            if not self.wait_for_ssh_up(api, resid, vmxip, vmxuser, vmxpassword, logger):
                 raise Exception('VCP not reachable via SSH within 5 minutes at IP %s -- check management network' % vmxip)
 
             if self.ssh_wait_for_ge_interfaces(api, resid, vmxip, vmxpassword, ncards, logger):
@@ -686,22 +725,27 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
         copy_resource_attributes(api, vmxtemplate_resource, vmx_resource)
 
         for _ in range(5):
-            api.AutoLoad(vmx_resource)
+            logger.info('Running autoload...')
+            try:
+                api.AutoLoad(vmx_resource)
 
-            children_flat = get_all_child_resources(api, vmx_resource)
-            ge_children_flat = {a: b
-                                for a, b in children_flat.iteritems()
-                                if '/' in a and '-' in a.split('/')[-1]}
+                children_flat = get_all_child_resources(api, vmx_resource)
+                ge_children_flat = {a: b
+                                    for a, b in children_flat.iteritems()
+                                    if '/' in a and '-' in a.split('/')[-1]}
 
-            foundcards2ports = defaultdict(list)
-            for fullpath, attrs in ge_children_flat.iteritems():
-                foundcards2ports[attrs['ResourceBasename'].split('-')[1]].append(attrs['ResourceBasename'])
+                foundcards2ports = defaultdict(list)
+                for fullpath, attrs in ge_children_flat.iteritems():
+                    foundcards2ports[attrs['ResourceBasename'].split('-')[1]].append(attrs['ResourceBasename'])
 
-            if len(foundcards2ports) >= ncards:
-                logger.info('Autoload found ports: %s' % (foundcards2ports))
-                break
-            logger.info('Autoload did not find all cards (%d) or ports per card (10). Retrying in 10 seconds. Found: %s' % (ncards, foundcards2ports))
-            sleep(10)
+                if len(foundcards2ports) >= ncards:
+                    logger.info('Autoload found ports: %s' % (foundcards2ports))
+                    break
+                logger.info('Autoload did not find all cards (%d) or ports per card (10). Retrying in 10 seconds. Found: %s' % (ncards, foundcards2ports))
+                sleep(10)
+            except Exception as ek:
+                logger.info('Autoload error: %s. Retrying in 30 seconds.' % str(ek))
+                sleep(30)
         else:
             raise Exception('Autoload did not discover all expected ports - unhandled vMX failure')
 
@@ -725,12 +769,6 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
 
         create_fake_L2(api, fakel2name, vlantype, autoloadport2vmname_nicname)
 
-        api.AddServiceToReservation(resid, 'VNF Cleanup Service', vmx_resource+' cleanup', [
-            AttributeNameValue('Resources to Delete', ','.join([
-                vmx_resource,
-                fakel2name
-            ]))
-        ])
 
         logger.info('deployed_vcp=%s deployed_vfp=%s deployed=%s' % (deployed_vcp, deployed_vfp, deployed))
 
@@ -745,10 +783,12 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
 
             api.RemoveResourcesFromReservation(resid, [vmxtemplate_resource])
 
+        logger.info('SUCCESS deploying vMX %s' % vmx_resource)
+
     def post_autoload_cleanup(self, api, resid, deployed_vfp, vmname2details, netid50, logger):
         cpdet = get_cloud_provider_attributes(api, deployed_vfp[0])
         cpmodel = cpdet['ResourceModel']
-        if 'openstack' in cpmodel:
+        if 'openstack' in cpmodel.lower():
             osurlbase = cpdet['Controller URL']
             osprojname = cpdet['OpenStack Project Name'] or 'admin'
             osdomain = cpdet['OpenStack Domain Name'] or 'default'
@@ -778,7 +818,9 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
                                vmx_resource,
                                logger):
         cpdet = get_cloud_provider_attributes(api, deployed_vcp[0])
+        cpname = cpdet['ResourceName']
         cpmodel = cpdet['ResourceModel']
+        logger.info('Cloud provider model: %s' % cpmodel)
         mac2nicname = {}
         vmxip = None
         if 'vsphere' in cpmodel.lower() or 'vcenter' in cpmodel.lower():
@@ -818,8 +860,11 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
                 api.ExecuteResourceConnectedCommand(resid, d, 'PowerOn', 'power')
 
             vmxip = self.vsphere_telnet_setup(api, resid, deployed_vcp, esxi_ip, telnetport, rootpassword, userfullname, username, userpassword, requested_vmx_ip, logger)
+
         netid50 = None
-        if 'openstack' in cpmodel:
+        tocleanup = []
+
+        if 'openstack' in cpmodel.lower():
             for d in deployed:
                 api.ExecuteResourceConnectedCommand(resid, d, 'PowerOff', 'power')
 
@@ -843,12 +888,15 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
 
                             sorted(deployed_vcp) + sorted(deployed_vfp)):
                 port128id = openstack.create_fixed_ip_port('%s-%s' % (vmx_resource, ip.replace('.', '-')), netid128, subnetid128, ip)
+                tocleanup.append('port:%s' % port128id)
                 openstack.remove_security_groups(port128id)
                 openstack.set_port_security_enabled(port128id, False)
                 cid = vmname2details[vmname].VmDetails.UID
                 openstack.attach_port(cid, port128id)
                 sleep(5)
 
+            tocleanup.append('net:%s' % netid128)
+            tocleanup.append('net:%s' % netid50)
             for c in sorted(deployed_vfp):
                 cid = vmname2details[c].VmDetails.UID
                 openstack.attach_net(cid, netid50)
@@ -860,7 +908,6 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
             for d in deployed:
                 api.ExecuteResourceConnectedCommand(resid, d, 'PowerOn', 'power')
 
-            sleep(30)
             self.openstack_telnet_setup(api, resid, wsurl, len(deployed_vfp), rootpassword, username, userpassword, requested_vmx_ip, logger)
 
             vmxdetails = api.GetResourceDetails(deployed_vcp[0])
@@ -870,11 +917,12 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
                     vmxip = a.Value
                     break
 
-        return vmxip, mac2nicname, netid50
+        return vmxip, mac2nicname, netid50, cpname, ','.join(tocleanup)
 
     @staticmethod
-    def wait_for_ssh_up(vmxip, vmxuser, vmxpassword, logger):
-        for _ in range(120):
+    def wait_for_ssh_up(api, resid, vmxip, vmxuser, vmxpassword, logger):
+        api.WriteMessageToReservationOutput(resid, 'Polling 3 minutes for SSH ready on %s...' % vmxip)
+        for _ in range(18):
             try:
                 logger.info('SSH attempt...')
                 client = paramiko.SSHClient()
@@ -963,9 +1011,8 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
     @staticmethod
     def openstack_telnet_setup(api, resid, wsurl, ncards, rootpassword, username, userpassword, vmxip, logger):
         logger.info('serial console web socket url: %s' % wsurl)
-        ws = websocket.create_connection(wsurl, subprotocols=['binary', 'base64'])
 
-        def ws_read_until(patt):
+        def ws_read_until(ws, patt):
             buf = ''
             wmbuf = ''
             done = False
@@ -989,50 +1036,62 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
             logger.info('received %s' % buf)
             return buf
 
-        if vmxip.lower() == 'dhcp':
-            ip_command = 'set interfaces fxp0.0 family inet dhcp'
-        else:
-            if '/' not in vmxip:
-                if vmxip.startswith('172.16.'):
-                    vmxip += '/16'
+        for _ in range(30):
+            try:
+                ws = websocket.create_connection(wsurl, subprotocols=['binary', 'base64'])
+
+                if vmxip.lower() == 'dhcp':
+                    ip_command = 'set interfaces fxp0.0 family inet dhcp'
                 else:
-                    vmxip += '/24'
-            ip_command = 'set interfaces fxp0.0 family inet address %s' % vmxip
+                    if '/' not in vmxip:
+                        if vmxip.startswith('172.16.'):
+                            vmxip += '/16'
+                        else:
+                            vmxip += '/24'
+                    ip_command = 'set interfaces fxp0.0 family inet address %s' % vmxip
 
-        command_patts = [
-            ("", "login:"),
-            ("root", "#"),
-            ("cli", ">"),
-            ("configure", "#"),
-            (ip_command, "#"),
-            ("commit", "#"),
-            ("set system root-authentication plain-text-password", "password:"),
-            (rootpassword, "password:"),
-            (rootpassword, "#"),
-            ("commit", "#"),
-            ("set system services ssh root-login allow", "#"),
-            ("commit", "#"),
-            ("set system login user %s class super-user authentication plain-text-password" % username, "password:"),
-            (userpassword, "password:"),
-            (userpassword, "#"),
-            ("commit", "#"),
-        ]
-        for i in range(ncards):
-            for j in range(10):
-                command_patts.append(('set interfaces ge-%d/0/%d.0 family inet dhcp' % (i, j), '#'))
-        command_patts += [
-            ("commit", "#"),
-            ("exit", ">"),
-            ("exit", "#"),
-            ("exit", ":"),
+                command_patts = [
+                    ("", "login:"),
+                    ("root", "#"),
+                    ("cli", ">"),
+                    ("configure", "#"),
+                    (ip_command, "#"),
+                    ("commit", "#"),
+                    ("set system root-authentication plain-text-password", "password:"),
+                    (rootpassword, "password:"),
+                    (rootpassword, "#"),
+                    ("commit", "#"),
+                    ("set system services ssh root-login allow", "#"),
+                    ("commit", "#"),
+                    ("set system login user %s class super-user authentication plain-text-password" % username, "password:"),
+                    (userpassword, "password:"),
+                    (userpassword, "#"),
+                    ("commit", "#"),
+                ]
+                for i in range(ncards):
+                    for j in range(10):
+                        command_patts.append(('set interfaces ge-%d/0/%d.0 family inet dhcp' % (i, j), '#'))
+                command_patts += [
+                    ("commit", "#"),
+                    ("exit", ">"),
+                    ("exit", "#"),
+                    ("exit", ":"),
 
-        ]
-        for command, patt in command_patts:
-            if command:
-                ws.send(command + '\n')
-            sleep(3)
-            ws_read_until(patt)
-        ws.close()
+                ]
+                for command, patt in command_patts:
+                    if command:
+                        ws.send(command + '\n')
+                    sleep(3)
+                    ws_read_until(ws, patt)
+                break
+            except Exception as ee:
+                logger.info('Serial console websocket failed, sleeping 10 seconds: %s' % str(ee))
+                sleep(10)
+            finally:
+                logger.info('Closing websocket')
+                ws.close()
+        else:
+            raise Exception('Serial console did not become ready within 5 minutes')
 
     @staticmethod
     def vsphere_telnet_setup(api, resid, deployed_vcp, esxi_ip, telnetport, rootpassword, userfullname, username, userpassword, vmxip, logger):
@@ -1073,48 +1132,52 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
             ("SLEEP", "10"),
             ("show interfaces fxp0.0 terse", ">"),
         ]
-        while True:
-            tn = telnetlib.Telnet(esxi_ip, telnetport)
-            ts = ''
-            for command, pattern in command_patterns:
-                if command == 'SLEEP':
-                    sleep(int(pattern))
-                    continue
-                if command:
-                    tn.write(command + '\n')
-                logger.info('Telnet: write %s' % command)
-                s = ''
-                stuck = False
-                blankt = 0
-                while True:
-                    t = tn.read_until(pattern, timeout=5)
-                    if t:
-                        blankt = 0
-                    else:
-                        blankt += 1
-                    tt = re.sub(r'''[^->'_0-9A-Za-z*:;,.#@/"(){}\[\] \t\r\n]''', '_', t)
-                    while tt:
-                        api.WriteMessageToReservationOutput(resid, tt[0:500])
-                        tt = tt[500:]
-                    s += t
-                    logger.info('Telnet: read %s' % t)
-                    if pattern in s:
-                        ts += s
+        try:
+            while True:
+                tn = telnetlib.Telnet(esxi_ip, telnetport)
+                ts = ''
+                for command, pattern in command_patterns:
+                    if command == 'SLEEP':
+                        sleep(int(pattern))
+                        continue
+                    if command:
+                        tn.write(command + '\n')
+                    logger.info('Telnet: write %s' % command)
+                    s = ''
+                    stuck = False
+                    blankt = 0
+                    while True:
+                        t = tn.read_until(pattern, timeout=5)
+                        if t:
+                            blankt = 0
+                        else:
+                            blankt += 1
+                        tt = re.sub(r'''[^->'_0-9A-Za-z*:;,.#@/"(){}\[\] \t\r\n]''', '_', t)
+                        while tt:
+                            api.WriteMessageToReservationOutput(resid, tt[0:500])
+                            tt = tt[500:]
+                        s += t
+                        logger.info('Telnet: read %s' % t)
+                        if pattern in s:
+                            ts += s
+                            break
+                        if blankt > 5 and 'Choice: ' in s[-100:]:
+                            stuck = True
+                            break
+                    if stuck:
+                        logger.info('Telnet: DETECTED STUCK BOOT MENU, resetting and reconnecting')
+                        # tn.write('J\n1\n')
+                        api.ExecuteResourceConnectedCommand(resid, deployed_vcp[0], 'PowerOff', 'power')
+                        sleep(10)
+                        api.ExecuteResourceConnectedCommand(resid, deployed_vcp[0], 'PowerOn', 'power')
+                        sleep(10)
                         break
-                    if blankt > 5 and 'Choice: ' in s[-100:]:
-                        stuck = True
-                        break
-                if stuck:
-                    logger.info('Telnet: DETECTED STUCK BOOT MENU, resetting and reconnecting')
-                    # tn.write('J\n1\n')
-                    api.ExecuteResourceConnectedCommand(resid, deployed_vcp[0], 'PowerOff', 'power')
-                    sleep(10)
-                    api.ExecuteResourceConnectedCommand(resid, deployed_vcp[0], 'PowerOn', 'power')
-                    sleep(10)
+                    sleep(1)
+                else:
                     break
-                sleep(1)
-            else:
-                break
+        except Exception as e:
+            raise Exception('Failure connecting to VM serial console on ESXi host %s port %d: %s' % (esxi_ip, telnetport, str(e)))
+
         ips = re.findall(r'\D(\d+[.]\d+[.]\d+[.]\d+)/', ts)
         if not ips:
             raise Exception('VCP did not get IP from DHCP')

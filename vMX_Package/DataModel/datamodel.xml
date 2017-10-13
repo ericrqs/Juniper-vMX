@@ -9,6 +9,18 @@
                 <Rule Name="Setting"/>
             </Rules>
         </AttributeInfo>
+        <AttributeInfo IsReadOnly="false" Description="List of objects in the form port:123-456,net:123-456" DefaultValue="" Type="String" Name="Cloud Provider Objects to Delete">
+            <Rules>
+                <Rule Name="Configuration"/>
+                <Rule Name="Setting"/>
+            </Rules>
+        </AttributeInfo>
+        <AttributeInfo IsReadOnly="false" Description="Name of the cloud provider to clean up" DefaultValue="" Type="String" Name="Cloud Provider Name">
+            <Rules>
+                <Rule Name="Configuration"/>
+                <Rule Name="Setting"/>
+            </Rules>
+        </AttributeInfo>
         <AttributeInfo Name="Chassis App" Description="" Type="String" DefaultValue="" IsReadOnly="false">
             <Rules Override="false">
                 <Rule Name="Configuration"/>
@@ -374,9 +386,17 @@
                         <AttachedAttribute Name="Resources to Delete" UserInput="true" IsLocal="true" IsOverridable="true">
                             <AllowedValues/>
                         </AttachedAttribute>
+                        <AttachedAttribute Name="Cloud Provider Objects to Delete" UserInput="true" IsLocal="true" IsOverridable="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
+                        <AttachedAttribute Name="Cloud Provider Name" UserInput="true" IsLocal="true" IsOverridable="true">
+                            <AllowedValues/>
+                        </AttachedAttribute>
                     </AttachedAttributes>
                     <AttributeValues>
                         <AttributeValue Name="Resources to Delete" Value=""/>
+                        <AttributeValue Name="Cloud Provider Objects to Delete" Value=""/>
+                        <AttributeValue Name="Cloud Provider Name" Value=""/>
                     </AttributeValues>
                     <ParentModels/>
                     <Drivers/>
