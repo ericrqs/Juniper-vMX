@@ -640,6 +640,17 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
         vmx_resource = vmxtemplate_resource.replace('Template ', '').replace('Template', '') + '_' + str(randint(1, 10000))
         fakel2name = '%s L2' % vmx_resource
 
+        try:
+            api.RemoveServicesFromReservation(resid, [vmx_resource + ' cleanup'])
+        except:
+            pass
+        api.AddServiceToReservation(resid, 'VNF Cleanup Service', vmx_resource + ' cleanup', [
+            AttributeNameValue('Resources to Delete', ','.join([
+                vmx_resource,
+                fakel2name
+            ])),
+        ])
+
         todeploy = [
             (vcp_app_template_name, '%s_vcp' % vmx_resource, px, py + 100)
         ] + [
@@ -665,7 +676,7 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
 
             logger.info('deployed apps = %s' % str(deployed))
 
-            vmxip, mac2nicname, netid50, cpname, tocleanup = self.post_creation_vm_setup(api,
+            vmxip, mac2nicname, netid50, cpname = self.post_creation_vm_setup(api,
                                                                                          resid,
                                                                                          deployed,
                                                                                          deployed_vcp,
@@ -680,18 +691,6 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
                                                                                          vmx_resource,
                                                                                          logger)
 
-            try:
-                api.RemoveServicesFromReservation(resid, [vmx_resource + ' cleanup'])
-            except:
-                pass
-            api.AddServiceToReservation(resid, 'VNF Cleanup Service', vmx_resource + ' cleanup', [
-                AttributeNameValue('Resources to Delete', ','.join([
-                    vmx_resource,
-                    fakel2name
-                ])),
-                AttributeNameValue('Cloud Provider Objects to Delete', tocleanup),
-                AttributeNameValue('Cloud Provider Name', cpname),
-            ])
 
             if not vmxip:
                 raise Exception('VCP did not receive an IP (requested %s)' % (requested_vmx_ip))
@@ -897,6 +896,16 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
 
             tocleanup.append('net:%s' % netid128)
             tocleanup.append('net:%s' % netid50)
+
+            try:
+                api.RemoveServicesFromReservation(resid, [vmx_resource + ' OpenStack cleanup'])
+            except:
+                pass
+            api.AddServiceToReservation(resid, 'VNF Cleanup Service', vmx_resource + ' OpenStack cleanup', [
+                AttributeNameValue('Cloud Provider Objects to Delete', ','.join(tocleanup)),
+                AttributeNameValue('Cloud Provider Name', cpname),
+            ])
+
             for c in sorted(deployed_vfp):
                 cid = vmname2details[c].VmDetails.UID
                 openstack.attach_net(cid, netid50)
@@ -917,7 +926,7 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
                     vmxip = a.Value
                     break
 
-        return vmxip, mac2nicname, netid50, cpname, ','.join(tocleanup)
+        return vmxip, mac2nicname, netid50, cpname
 
     @staticmethod
     def wait_for_ssh_up(api, resid, vmxip, vmxuser, vmxpassword, logger):
