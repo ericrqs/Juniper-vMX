@@ -4,12 +4,15 @@ import requests
 from cloudshell.core.logger.qs_logger import get_qs_logger
 from cloudshell.helpers.scripts import cloudshell_scripts_helpers as helpers
 
+api = helpers.get_api_session()
 resid = helpers.get_reservation_context_details().id
 
 logger = get_qs_logger(log_group=resid, log_file_prefix='VNF')
 
 delete_resources = helpers.get_resource_context_details().attributes['Resources to Delete'].split(',')
-helpers.get_api_session().DeleteResources(delete_resources)
+
+if delete_resources and delete_resources[0]:
+    api.DeleteResources(delete_resources)
 
 delete_networks = helpers.get_resource_context_details().attributes['Cloud Provider Objects to Delete'].split(',')
 cpname = helpers.get_resource_context_details().attributes['Cloud Provider Name']
@@ -25,11 +28,13 @@ class OpenStack(object):
             raise Exception(r'Request failed. %s: %s. See log under c:\ProgramData\QualiSystems\logs for full details.' % (str(rv.status_code), rv.text))
         return rv
 
-    def __init__(self, osurlbase,
-                            osprojname,
-                            osdomain,
-                            osusername,
-                            ospassword, logger):
+    def __init__(self,
+                 osurlbase,
+                 osprojname,
+                 osdomain,
+                 osusername,
+                 ospassword,
+                 logger):
 
         self.logger = logger
 
@@ -86,16 +91,8 @@ class OpenStack(object):
         return json.loads(r.text)['network']['id']
 
     def delete_network(self, netid):
-        r = self.openstack_rest('POST', '%s/v2.0/networks.json' % self.neutronurl,
-                           headers={'Content-Type': 'application/json', 'X-Auth-Token': self.token},
-                           data=json.dumps({
-                               "network": {
-                                   "name": netname,
-                                   "admin_state_up": True
-                               }
-                           })
-                           )
-        return json.loads(r.text)['network']['id']
+        self.openstack_rest('DELETE', '%s/v2.0/networks/%s.json' % (self.neutronurl, netid),
+                            headers={'X-Auth-Token': self.token})
 
     def create_subnet(self, name, netid, cidr, ranges, gateway, enable_dhcp):
         r = self.openstack_rest('POST', '%s/v2.0/subnets.json' % self.neutronurl,
@@ -134,9 +131,8 @@ class OpenStack(object):
         return json.loads(r.text)['port']['id']
 
     def delete_port(self, portid):
-        r = self.openstack_rest('DELETE', '%s/v2.0/ports/%s.json' % (self.neutronurl, portid),
-                           headers={'Content-Type': 'application/json', 'X-Auth-Token': self.token}
-                           )
+        self.openstack_rest('DELETE', '%s/v2.0/ports/%s.json' % (self.neutronurl, portid),
+                            headers={'Content-Type': 'application/json', 'X-Auth-Token': self.token})
 
     def remove_security_groups(self, portid):
         self.openstack_rest('PUT', '%s/v2.0/ports/%s.json' % (self.neutronurl, portid),
@@ -196,13 +192,13 @@ class OpenStack(object):
 
 
 if delete_networks and delete_networks[0]:
-    cpattrs = {a.Name: a.Value for a in helpers.get_api_session().GetResourceDetails(cpname).ResourceAttributes}
+    cpattrs = {a.Name: a.Value for a in api.GetResourceDetails(cpname).ResourceAttributes}
 
     osurlbase = cpattrs.get('Controller URL')
     osprojname = cpattrs.get('OpenStack Project Name', 'admin')
     osdomain = cpattrs.get('OpenStack Domain Name', 'default')
     osusername = cpattrs.get('User Name')
-    ospassword = cpattrs.get('Password')
+    ospassword = api.DecryptPassword(cpattrs.get('Password')).Value
 
     openstack = OpenStack(osurlbase, osprojname, osdomain, osusername, ospassword, logger)
 

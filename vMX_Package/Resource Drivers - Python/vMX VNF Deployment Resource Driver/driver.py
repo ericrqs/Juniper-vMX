@@ -579,6 +579,416 @@ def create_fake_L2(api, fakel2name, vlantype, portfullpath2vmname_nicname):
     ])
 
 
+def post_autoload_cleanup(api, resid, deployed_vfp, vmname2details, netid50, logger):
+    cpdet = get_cloud_provider_attributes(api, deployed_vfp[0])
+    cpmodel = cpdet['ResourceModel']
+    if 'openstack' in cpmodel.lower():
+        osurlbase = cpdet['Controller URL']
+        osprojname = cpdet['OpenStack Project Name'] or 'admin'
+        osdomain = cpdet['OpenStack Domain Name'] or 'default'
+        osusername = cpdet['User Name']
+        ospassword = cpdet['Password']
+
+        openstack = OpenStack(osurlbase, osprojname, osdomain, osusername, ospassword, logger)
+        for v in deployed_vfp:
+            api.ExecuteResourceConnectedCommand(resid, v, 'PowerOff', 'power')
+            cid = vmname2details[v].VmDetails.UID
+            openstack.disconnect_net(cid, netid50)
+            api.ExecuteResourceConnectedCommand(resid, v, 'PowerOn', 'power')
+
+
+def post_creation_vm_setup(api,
+                           resid,
+                           deployed,
+                           deployed_vcp,
+                           deployed_vfp,
+                           internal_vlan_service_name,
+                           requested_vmx_ip,
+                           rootpassword,
+                           userfullname,
+                           username,
+                           userpassword,
+                           vmname2details,
+                           vmx_resource,
+                           logger):
+    cpdet = get_cloud_provider_attributes(api, deployed_vcp[0])
+    cpname = cpdet['ResourceName']
+    cpmodel = cpdet['ResourceModel']
+    logger.info('Cloud provider model: %s' % cpmodel)
+    mac2nicname = {}
+    vmxip = None
+    if 'vsphere' in cpmodel.lower() or 'vcenter' in cpmodel.lower():
+        vcenterip = cpdet['ResourceAddress']
+        vcenteruser = cpdet['User']
+        vcenterpassword = cpdet['Password']
+
+        with Vcenter(vcenterip, vcenteruser, vcenterpassword, logger) as vcenter:
+            name2vm = vcenter.get_name2vm()
+
+            for cardvmname in deployed_vfp:
+                cardvm = name2vm[cardvmname]
+                mac2nicname.update(vcenter.get_mac2nicname(cardvm))
+            logger.info('mac2nicname = %s' % mac2nicname)
+
+            telnetport = allocate_number_from_pool(api, resid, 'vmxconsoleport', 9310, 9330)
+
+            vm = name2vm[deployed_vcp[0]]
+            esxi_ip = vm.runtime.host.name
+            vcenter.add_serial_port(vm, telnetport, logger)
+
+        with Mutex(api, resid, logger):
+            api.AddServiceToReservation(resid, internal_vlan_service_name, 'vMX internal network', [])
+            api.SetConnectorsInReservation(resid, [
+                SetConnectorRequest('vMX internal network', d, 'bi', 'br-int') for d in deployed
+            ])
+            endpoints = []
+            for d in deployed:
+                endpoints.append('vMX internal network')
+                endpoints.append(d)
+                api.SetConnectorAttributes(resid, 'vMX internal network', d, [
+                    AttributeNameValue('Requested Target vNIC Name', '2')
+                ])
+            api.ConnectRoutesInReservation(resid, endpoints, 'bi')
+
+        for d in deployed:
+            api.ExecuteResourceConnectedCommand(resid, d, 'PowerOn', 'power')
+
+        vmxip = vsphere_telnet_setup(api, resid, deployed_vcp, esxi_ip, telnetport, rootpassword, userfullname, username, userpassword, requested_vmx_ip, logger)
+
+    netid50 = None
+    tocleanup = []
+
+    if 'openstack' in cpmodel.lower():
+        for d in deployed:
+            api.ExecuteResourceConnectedCommand(resid, d, 'PowerOff', 'power')
+
+        osurlbase = cpdet['Controller URL']
+        osprojname = cpdet['OpenStack Project Name'] or 'admin'
+        osdomain = cpdet['OpenStack Domain Name'] or 'default'
+        osusername = cpdet['User Name']
+        ospassword = cpdet['Password']
+
+        openstack = OpenStack(osurlbase, osprojname, osdomain, osusername, ospassword, logger)
+
+        netid128 = openstack.create_network('net128-%s' % vmx_resource)
+        subnetid128 = openstack.create_subnet('net128-%s-subnet' % vmx_resource, netid128, '128.0.0.0/24', [('128.0.0.1', '128.0.0.254')], None, False)
+
+        netid50 = openstack.create_network('net50-%s' % vmx_resource)
+        subnetid50 = openstack.create_subnet('net50-%s-subnet' % vmx_resource, netid50, '50.0.0.0/24', [('50.0.0.1', '50.0.0.254')], None, False)
+
+        for ip, vmname in zip(
+                        ['128.0.0.%d' % (1 + i) for i in range(len(deployed_vcp))] +
+                        ['128.0.0.%d' % (16 + i) for i in range(len(deployed_vfp))],
+
+                        sorted(deployed_vcp) + sorted(deployed_vfp)):
+            port128id = openstack.create_fixed_ip_port('%s-%s' % (vmx_resource, ip.replace('.', '-')), netid128, subnetid128, ip)
+            tocleanup.append('port:%s' % port128id)
+            openstack.remove_security_groups(port128id)
+            openstack.set_port_security_enabled(port128id, False)
+            cid = vmname2details[vmname].VmDetails.UID
+            openstack.attach_port(cid, port128id)
+            sleep(5)
+
+        tocleanup.append('net:%s' % netid128)
+        tocleanup.append('net:%s' % netid50)
+
+        try:
+            api.RemoveServicesFromReservation(resid, [vmx_resource + ' OpenStack cleanup'])
+        except:
+            pass
+        api.AddServiceToReservation(resid, 'VNF Cleanup Service', vmx_resource + ' OpenStack cleanup', [
+            AttributeNameValue('Cloud Provider Objects to Delete', ','.join(tocleanup)),
+            AttributeNameValue('Cloud Provider Name', cpname),
+        ])
+
+        for c in sorted(deployed_vfp):
+            cid = vmname2details[c].VmDetails.UID
+            openstack.attach_net(cid, netid50)
+            sleep(5)
+
+        cid = vmname2details[deployed_vcp[0]].VmDetails.UID
+        wsurl = openstack.get_serial_console_url(cid)
+
+        for d in deployed:
+            api.ExecuteResourceConnectedCommand(resid, d, 'PowerOn', 'power')
+
+        openstack_telnet_setup(api, resid, wsurl, len(deployed_vfp), rootpassword, username, userpassword, requested_vmx_ip, logger)
+
+        vmxdetails = api.GetResourceDetails(deployed_vcp[0])
+        vmxip = vmxdetails.Address
+        for a in vmxdetails.ResourceAttributes:
+            if a.Name == 'Public IP' and a.Value:
+                vmxip = a.Value
+                break
+
+    return vmxip, mac2nicname, netid50, cpname
+
+
+def wait_for_ssh_up(api, resid, vmxip, vmxuser, vmxpassword, logger):
+    api.WriteMessageToReservationOutput(resid, 'Polling 3 minutes for SSH ready on %s...' % vmxip)
+    for _ in range(18):
+        try:
+            logger.info('SSH attempt...')
+            client = paramiko.SSHClient()
+            client.load_system_host_keys()
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            client.connect(vmxip, port=22, username=vmxuser, password=vmxpassword, timeout=10)
+            client.close()
+            return True
+        except:
+            logger.info('SSH failed, sleeping 10 seconds')
+            sleep(10)
+    return True
+
+
+def ssh_wait_for_ge_interfaces(api, resid, vmxip, vmxpassword, vfp_count, logger):
+    gotallcards = False
+    try:
+        logger.info('SSH attempt...')
+        client = paramiko.SSHClient()
+        client.load_system_host_keys()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(vmxip, port=22, username='root', password=vmxpassword, timeout=10)
+        logger.info('SSH connected')
+        ch = client.invoke_shell()
+
+        mac2ifname = {}
+        isfirst = True
+        for _ in range(18):
+            mac2ifname0 = {}
+            if isfirst:
+                cmdpatt = [
+                    ('', '#'),
+                    ('ifconfig', '#'),
+                ]
+                isfirst = False
+            else:
+                cmdpatt = [
+                    ('ifconfig', '#'),
+                ]
+            for cmd, patt in cmdpatt:
+                if cmd:
+                    logger.info('ssh send %s' % cmd)
+                    ch.send('%s\n' % cmd)
+                buf = ''
+                for ll in range(10):
+                    b = ch.recv(10000)
+                    logger.info('ssh recv: %s' % str(b))
+                    if b:
+                        buf += b
+                    if patt in buf:
+                        break
+                    if not b:
+                        break
+                ifconfig = buf
+
+            tt = re.sub(r'''[^->'_0-9A-Za-z*:;,.#@/"(){}\[\] \t\r\n]''', '_', ifconfig)
+            while tt:
+                api.WriteMessageToReservationOutput(resid, tt[0:500])
+                tt = tt[500:]
+            m = re.findall(
+                r'^((fe|ge|xe|et)-\d+/\d+/\d+).*?([0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+)',
+                ifconfig, re.DOTALL + re.MULTILINE)
+            for j in m:
+                ifname, _, mac = j
+                mac = mac.lower()
+                mac2ifname0[mac] = ifname
+            logger.info('mac2ifname0 = %s' % mac2ifname0)
+            seencards = set()
+            for mac, ifname in mac2ifname0.iteritems():
+                seencards.add(int(ifname.split('-')[1].split('/')[0]))
+
+            if len(seencards) >= vfp_count:
+                mac2ifname = mac2ifname0
+                gotallcards = True
+
+                break
+
+            api.WriteMessageToReservationOutput(resid, 'Still waiting for %d card(s)' % (vfp_count - len(seencards)))
+            sleep(10)
+        client.close()
+    except Exception as e:
+        logger.info('Exception during SSH session: %s' % str(e))
+    logger.info('SSH disconnected')
+    return gotallcards
+
+
+def openstack_telnet_setup(api, resid, wsurl, ncards, rootpassword, username, userpassword, vmxip, logger):
+    logger.info('serial console web socket url: %s' % wsurl)
+
+    def ws_read_until(ws, patt):
+        buf = ''
+        wmbuf = ''
+        done = False
+        while True:
+            r = ws.recv()
+            logger.info('serial console recv %s' % r)
+            if r:
+                buf += r
+                wmbuf += r
+            if not r:
+                logger.info('ws.recv() returned empty')
+                done = True
+            if patt in buf:
+                done = True
+            if len(wmbuf) > 100 or done:
+                m = wmbuf[0:100]
+                wmbuf = wmbuf[100:]
+                api.WriteMessageToReservationOutput(resid, re.sub(r'''[^->'_0-9A-Za-z*:;,.#@/"(){}\[\] \t\r\n]''', '_', m))
+            if done:
+                break
+        logger.info('received %s' % buf)
+        return buf
+
+    for _ in range(30):
+        try:
+            ws = websocket.create_connection(wsurl, subprotocols=['binary', 'base64'])
+
+            if vmxip.lower() == 'dhcp':
+                ip_command = 'set interfaces fxp0.0 family inet dhcp'
+            else:
+                if '/' not in vmxip:
+                    if vmxip.startswith('172.16.'):
+                        vmxip += '/16'
+                    else:
+                        vmxip += '/24'
+                ip_command = 'set interfaces fxp0.0 family inet address %s' % vmxip
+
+            command_patts = [
+                ("", "login:"),
+                ("root", "#"),
+                ("cli", ">"),
+                ("configure", "#"),
+                (ip_command, "#"),
+                ("commit", "#"),
+                ("set system root-authentication plain-text-password", "password:"),
+                (rootpassword, "password:"),
+                (rootpassword, "#"),
+                ("commit", "#"),
+                ("set system services ssh root-login allow", "#"),
+                ("commit", "#"),
+                ("set system login user %s class super-user authentication plain-text-password" % username, "password:"),
+                (userpassword, "password:"),
+                (userpassword, "#"),
+                ("commit", "#"),
+            ]
+            for i in range(ncards):
+                for j in range(10):
+                    command_patts.append(('set interfaces ge-%d/0/%d.0 family inet dhcp' % (i, j), '#'))
+            command_patts += [
+                ("commit", "#"),
+                ("exit", ">"),
+                ("exit", "#"),
+                ("exit", ":"),
+
+            ]
+            for command, patt in command_patts:
+                if command:
+                    ws.send(command + '\n')
+                sleep(3)
+                ws_read_until(ws, patt)
+            break
+        except Exception as ee:
+            logger.info('Serial console websocket failed, sleeping 10 seconds: %s' % str(ee))
+            sleep(10)
+        finally:
+            logger.info('Closing websocket')
+            ws.close()
+    else:
+        raise Exception('Serial console did not become ready within 5 minutes')
+
+
+def vsphere_telnet_setup(api, resid, deployed_vcp, esxi_ip, telnetport, rootpassword, userfullname, username, userpassword, vmxip, logger):
+    if vmxip.lower() == 'dhcp':
+        ip_command = 'set interfaces fxp0.0 family inet dhcp'
+    else:
+        if '/' not in vmxip:
+            if vmxip.startswith('172.16.'):
+                vmxip += '/16'
+            else:
+                vmxip += '/24'
+        ip_command = 'set interfaces fxp0.0 family inet address %s' % vmxip
+
+    command_patterns = [
+        ("", "login:"),
+        ("root", "#"),
+        ("cli", ">"),
+        ("configure", "#"),
+        (ip_command, "#"),
+        ("commit", "#"),
+        ("set system root-authentication plain-text-password", "password:"),
+        (rootpassword, "password:"),
+        (rootpassword, "#"),
+        ("commit", "#"),
+        ("edit system services ssh", "#"),
+        ("set root-login allow", "#"),
+        ("commit", "#"),
+        ("exit", "#"),
+        ("edit system login", "#"),
+        ("set user %s class super-user" % username, "#"),
+        ("set user %s full-name \"%s\"" % (username, userfullname), "#"),
+        ("set user %s authentication plain-text-password" % username, "password:"),
+        (userpassword, "password:"),
+        (userpassword, "#"),
+        ("commit", "#"),
+        ("exit", "#"),
+        ("exit", ">"),
+        ("SLEEP", "10"),
+        ("show interfaces fxp0.0 terse", ">"),
+    ]
+    try:
+        while True:
+            tn = telnetlib.Telnet(esxi_ip, telnetport)
+            ts = ''
+            for command, pattern in command_patterns:
+                if command == 'SLEEP':
+                    sleep(int(pattern))
+                    continue
+                if command:
+                    tn.write(command + '\n')
+                logger.info('Telnet: write %s' % command)
+                s = ''
+                stuck = False
+                blankt = 0
+                while True:
+                    t = tn.read_until(pattern, timeout=5)
+                    if t:
+                        blankt = 0
+                    else:
+                        blankt += 1
+                    tt = re.sub(r'''[^->'_0-9A-Za-z*:;,.#@/"(){}\[\] \t\r\n]''', '_', t)
+                    while tt:
+                        api.WriteMessageToReservationOutput(resid, tt[0:500])
+                        tt = tt[500:]
+                    s += t
+                    logger.info('Telnet: read %s' % t)
+                    if pattern in s:
+                        ts += s
+                        break
+                    if blankt > 5 and 'Choice: ' in s[-100:]:
+                        stuck = True
+                        break
+                if stuck:
+                    logger.info('Telnet: DETECTED STUCK BOOT MENU, resetting and reconnecting')
+                    # tn.write('J\n1\n')
+                    api.ExecuteResourceConnectedCommand(resid, deployed_vcp[0], 'PowerOff', 'power')
+                    sleep(10)
+                    api.ExecuteResourceConnectedCommand(resid, deployed_vcp[0], 'PowerOn', 'power')
+                    sleep(10)
+                    break
+                sleep(1)
+            else:
+                break
+    except Exception as e:
+        raise Exception('Failure connecting to VM serial console on ESXi host %s port %d: %s' % (esxi_ip, telnetport, str(e)))
+
+    ips = re.findall(r'\D(\d+[.]\d+[.]\d+[.]\d+)/', ts)
+    if not ips:
+        raise Exception('VCP did not get IP from DHCP')
+    vmxip = ips[-1]
+    return vmxip
+
+
 class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
     def __init__(self):
         pass
@@ -640,17 +1050,6 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
         vmx_resource = vmxtemplate_resource.replace('Template ', '').replace('Template', '') + '_' + str(randint(1, 10000))
         fakel2name = '%s L2' % vmx_resource
 
-        try:
-            api.RemoveServicesFromReservation(resid, [vmx_resource + ' cleanup'])
-        except:
-            pass
-        api.AddServiceToReservation(resid, 'VNF Cleanup Service', vmx_resource + ' cleanup', [
-            AttributeNameValue('Resources to Delete', ','.join([
-                vmx_resource,
-                fakel2name
-            ])),
-        ])
-
         todeploy = [
             (vcp_app_template_name, '%s_vcp' % vmx_resource, px, py + 100)
         ] + [
@@ -676,7 +1075,7 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
 
             logger.info('deployed apps = %s' % str(deployed))
 
-            vmxip, mac2nicname, netid50, cpname = self.post_creation_vm_setup(api,
+            vmxip, mac2nicname, netid50, cpname = post_creation_vm_setup(api,
                                                                                          resid,
                                                                                          deployed,
                                                                                          deployed_vcp,
@@ -695,10 +1094,10 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
             if not vmxip:
                 raise Exception('VCP did not receive an IP (requested %s)' % (requested_vmx_ip))
 
-            if not self.wait_for_ssh_up(api, resid, vmxip, vmxuser, vmxpassword, logger):
+            if not wait_for_ssh_up(api, resid, vmxip, vmxuser, vmxpassword, logger):
                 raise Exception('VCP not reachable via SSH within 5 minutes at IP %s -- check management network' % vmxip)
 
-            if self.ssh_wait_for_ge_interfaces(api, resid, vmxip, vmxpassword, ncards, logger):
+            if ssh_wait_for_ge_interfaces(api, resid, vmxip, vmxpassword, ncards, logger):
                 logger.info('All expected ge- interfaces found')
                 break
 
@@ -720,6 +1119,16 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
         api.SetReservationResourcePosition(resid, vmx_resource, px, py)
         if router_driver:
             api.UpdateResourceDriver(vmx_resource, router_driver)
+
+        try:
+            api.RemoveServicesFromReservation(resid, [vmx_resource + ' vMX resource cleanup'])
+        except:
+            pass
+        api.AddServiceToReservation(resid, 'VNF Cleanup Service', vmx_resource + ' vMX resource cleanup', [
+            AttributeNameValue('Resources to Delete', ','.join([
+                vmx_resource,
+            ])),
+        ])
 
         copy_resource_attributes(api, vmxtemplate_resource, vmx_resource)
 
@@ -748,7 +1157,7 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
         else:
             raise Exception('Autoload did not discover all expected ports - unhandled vMX failure')
 
-        self.post_autoload_cleanup(api, resid, deployed_vfp, vmname2details, netid50, logger)
+        post_autoload_cleanup(api, resid, deployed_vfp, vmname2details, netid50, logger)
 
         vfpcardidstr2deployedapp3 = {vfpname.split('_')[2].replace('vfp', '').split('-')[0]: vfpname for vfpname in
                                      deployed_vfp}
@@ -767,7 +1176,15 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
                     autoloadport2vmname_nicname[ch] = (vm_from_ge_port(ch), mac2nicname.get(val, attrs['ResourceBasename'].split('-')[-1]))
 
         create_fake_L2(api, fakel2name, vlantype, autoloadport2vmname_nicname)
-
+        try:
+            api.RemoveServicesFromReservation(resid, [vmx_resource + ' L2 cleanup'])
+        except:
+            pass
+        api.AddServiceToReservation(resid, 'VNF Cleanup Service', vmx_resource + ' L2 cleanup', [
+            AttributeNameValue('Resources to Delete', ','.join([
+                fakel2name,
+            ])),
+        ])
 
         logger.info('deployed_vcp=%s deployed_vfp=%s deployed=%s' % (deployed_vcp, deployed_vfp, deployed))
 
@@ -783,414 +1200,5 @@ class VmxVnfDeploymentResourceDriver(ResourceDriverInterface):
             api.RemoveResourcesFromReservation(resid, [vmxtemplate_resource])
 
         logger.info('SUCCESS deploying vMX %s' % vmx_resource)
-
-    def post_autoload_cleanup(self, api, resid, deployed_vfp, vmname2details, netid50, logger):
-        cpdet = get_cloud_provider_attributes(api, deployed_vfp[0])
-        cpmodel = cpdet['ResourceModel']
-        if 'openstack' in cpmodel.lower():
-            osurlbase = cpdet['Controller URL']
-            osprojname = cpdet['OpenStack Project Name'] or 'admin'
-            osdomain = cpdet['OpenStack Domain Name'] or 'default'
-            osusername = cpdet['User Name']
-            ospassword = cpdet['Password']
-
-            openstack = OpenStack(osurlbase, osprojname, osdomain, osusername, ospassword, logger)
-            for v in deployed_vfp:
-                api.ExecuteResourceConnectedCommand(resid, v, 'PowerOff', 'power')
-                cid = vmname2details[v].VmDetails.UID
-                openstack.disconnect_net(cid, netid50)
-                api.ExecuteResourceConnectedCommand(resid, v, 'PowerOn', 'power')
-
-    def post_creation_vm_setup(self,
-                               api,
-                               resid,
-                               deployed,
-                               deployed_vcp,
-                               deployed_vfp,
-                               internal_vlan_service_name,
-                               requested_vmx_ip,
-                               rootpassword,
-                               userfullname,
-                               username,
-                               userpassword,
-                               vmname2details,
-                               vmx_resource,
-                               logger):
-        cpdet = get_cloud_provider_attributes(api, deployed_vcp[0])
-        cpname = cpdet['ResourceName']
-        cpmodel = cpdet['ResourceModel']
-        logger.info('Cloud provider model: %s' % cpmodel)
-        mac2nicname = {}
-        vmxip = None
-        if 'vsphere' in cpmodel.lower() or 'vcenter' in cpmodel.lower():
-            vcenterip = cpdet['ResourceAddress']
-            vcenteruser = cpdet['User']
-            vcenterpassword = cpdet['Password']
-
-            with Vcenter(vcenterip, vcenteruser, vcenterpassword, logger) as vcenter:
-                name2vm = vcenter.get_name2vm()
-
-                for cardvmname in deployed_vfp:
-                    cardvm = name2vm[cardvmname]
-                    mac2nicname.update(vcenter.get_mac2nicname(cardvm))
-                logger.info('mac2nicname = %s' % mac2nicname)
-
-                telnetport = allocate_number_from_pool(api, resid, 'vmxconsoleport', 9300, 9330)
-
-                vm = name2vm[deployed_vcp[0]]
-                esxi_ip = vm.runtime.host.name
-                vcenter.add_serial_port(vm, telnetport, logger)
-
-            with Mutex(api, resid, logger):
-                api.AddServiceToReservation(resid, internal_vlan_service_name, 'vMX internal network', [])
-                api.SetConnectorsInReservation(resid, [
-                    SetConnectorRequest('vMX internal network', d, 'bi', 'br-int') for d in deployed
-                ])
-                endpoints = []
-                for d in deployed:
-                    endpoints.append('vMX internal network')
-                    endpoints.append(d)
-                    api.SetConnectorAttributes(resid, 'vMX internal network', d, [
-                        AttributeNameValue('Requested Target vNIC Name', '2')
-                    ])
-                api.ConnectRoutesInReservation(resid, endpoints, 'bi')
-
-            for d in deployed:
-                api.ExecuteResourceConnectedCommand(resid, d, 'PowerOn', 'power')
-
-            vmxip = self.vsphere_telnet_setup(api, resid, deployed_vcp, esxi_ip, telnetport, rootpassword, userfullname, username, userpassword, requested_vmx_ip, logger)
-
-        netid50 = None
-        tocleanup = []
-
-        if 'openstack' in cpmodel.lower():
-            for d in deployed:
-                api.ExecuteResourceConnectedCommand(resid, d, 'PowerOff', 'power')
-
-            osurlbase = cpdet['Controller URL']
-            osprojname = cpdet['OpenStack Project Name'] or 'admin'
-            osdomain = cpdet['OpenStack Domain Name'] or 'default'
-            osusername = cpdet['User Name']
-            ospassword = cpdet['Password']
-
-            openstack = OpenStack(osurlbase, osprojname, osdomain, osusername, ospassword, logger)
-
-            netid128 = openstack.create_network('net128-%s' % vmx_resource)
-            subnetid128 = openstack.create_subnet('net128-%s-subnet' % vmx_resource, netid128, '128.0.0.0/24', [('128.0.0.1', '128.0.0.254')], None, False)
-
-            netid50 = openstack.create_network('net50-%s' % vmx_resource)
-            subnetid50 = openstack.create_subnet('net50-%s-subnet' % vmx_resource, netid50, '50.0.0.0/24', [('50.0.0.1', '50.0.0.254')], None, False)
-
-            for ip, vmname in zip(
-                            ['128.0.0.%d' % (1 + i) for i in range(len(deployed_vcp))] +
-                            ['128.0.0.%d' % (16 + i) for i in range(len(deployed_vfp))],
-
-                            sorted(deployed_vcp) + sorted(deployed_vfp)):
-                port128id = openstack.create_fixed_ip_port('%s-%s' % (vmx_resource, ip.replace('.', '-')), netid128, subnetid128, ip)
-                tocleanup.append('port:%s' % port128id)
-                openstack.remove_security_groups(port128id)
-                openstack.set_port_security_enabled(port128id, False)
-                cid = vmname2details[vmname].VmDetails.UID
-                openstack.attach_port(cid, port128id)
-                sleep(5)
-
-            tocleanup.append('net:%s' % netid128)
-            tocleanup.append('net:%s' % netid50)
-
-            try:
-                api.RemoveServicesFromReservation(resid, [vmx_resource + ' OpenStack cleanup'])
-            except:
-                pass
-            api.AddServiceToReservation(resid, 'VNF Cleanup Service', vmx_resource + ' OpenStack cleanup', [
-                AttributeNameValue('Cloud Provider Objects to Delete', ','.join(tocleanup)),
-                AttributeNameValue('Cloud Provider Name', cpname),
-            ])
-
-            for c in sorted(deployed_vfp):
-                cid = vmname2details[c].VmDetails.UID
-                openstack.attach_net(cid, netid50)
-                sleep(5)
-
-            cid = vmname2details[deployed_vcp[0]].VmDetails.UID
-            wsurl = openstack.get_serial_console_url(cid)
-
-            for d in deployed:
-                api.ExecuteResourceConnectedCommand(resid, d, 'PowerOn', 'power')
-
-            self.openstack_telnet_setup(api, resid, wsurl, len(deployed_vfp), rootpassword, username, userpassword, requested_vmx_ip, logger)
-
-            vmxdetails = api.GetResourceDetails(deployed_vcp[0])
-            vmxip = vmxdetails.Address
-            for a in vmxdetails.ResourceAttributes:
-                if a.Name == 'Public IP' and a.Value:
-                    vmxip = a.Value
-                    break
-
-        return vmxip, mac2nicname, netid50, cpname
-
-    @staticmethod
-    def wait_for_ssh_up(api, resid, vmxip, vmxuser, vmxpassword, logger):
-        api.WriteMessageToReservationOutput(resid, 'Polling 3 minutes for SSH ready on %s...' % vmxip)
-        for _ in range(18):
-            try:
-                logger.info('SSH attempt...')
-                client = paramiko.SSHClient()
-                client.load_system_host_keys()
-                client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-                client.connect(vmxip, port=22, username=vmxuser, password=vmxpassword, timeout=10)
-                client.close()
-                return True
-            except:
-                logger.info('SSH failed, sleeping 10 seconds')
-                sleep(10)
-        return True
-
-    @staticmethod
-    def ssh_wait_for_ge_interfaces(api, resid, vmxip, vmxpassword, vfp_count, logger):
-        gotallcards = False
-        try:
-            logger.info('SSH attempt...')
-            client = paramiko.SSHClient()
-            client.load_system_host_keys()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            client.connect(vmxip, port=22, username='root', password=vmxpassword, timeout=10)
-            logger.info('SSH connected')
-            ch = client.invoke_shell()
-
-            mac2ifname = {}
-            isfirst = True
-            for _ in range(18):
-                mac2ifname0 = {}
-                if isfirst:
-                    cmdpatt = [
-                        ('', '#'),
-                        ('ifconfig', '#'),
-                    ]
-                    isfirst = False
-                else:
-                    cmdpatt = [
-                        ('ifconfig', '#'),
-                    ]
-                for cmd, patt in cmdpatt:
-                    if cmd:
-                        logger.info('ssh send %s' % cmd)
-                        ch.send('%s\n' % cmd)
-                    buf = ''
-                    for ll in range(10):
-                        b = ch.recv(10000)
-                        logger.info('ssh recv: %s' % str(b))
-                        if b:
-                            buf += b
-                        if patt in buf:
-                            break
-                        if not b:
-                            break
-                    ifconfig = buf
-
-                tt = re.sub(r'''[^->'_0-9A-Za-z*:;,.#@/"(){}\[\] \t\r\n]''', '_', ifconfig)
-                while tt:
-                    api.WriteMessageToReservationOutput(resid, tt[0:500])
-                    tt = tt[500:]
-                m = re.findall(
-                    r'^((fe|ge|xe|et)-\d+/\d+/\d+).*?([0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+:[0-9a-fA-F]+)',
-                    ifconfig, re.DOTALL + re.MULTILINE)
-                for j in m:
-                    ifname, _, mac = j
-                    mac = mac.lower()
-                    mac2ifname0[mac] = ifname
-                logger.info('mac2ifname0 = %s' % mac2ifname0)
-                seencards = set()
-                for mac, ifname in mac2ifname0.iteritems():
-                    seencards.add(int(ifname.split('-')[1].split('/')[0]))
-
-                if len(seencards) >= vfp_count:
-                    mac2ifname = mac2ifname0
-                    gotallcards = True
-
-                    break
-
-                api.WriteMessageToReservationOutput(resid, 'Still waiting for %d card(s)' % (vfp_count - len(seencards)))
-                sleep(10)
-            client.close()
-        except Exception as e:
-            logger.info('Exception during SSH session: %s' % str(e))
-        logger.info('SSH disconnected')
-        return gotallcards
-
-    @staticmethod
-    def openstack_telnet_setup(api, resid, wsurl, ncards, rootpassword, username, userpassword, vmxip, logger):
-        logger.info('serial console web socket url: %s' % wsurl)
-
-        def ws_read_until(ws, patt):
-            buf = ''
-            wmbuf = ''
-            done = False
-            while True:
-                r = ws.recv()
-                logger.info('serial console recv %s' % r)
-                if r:
-                    buf += r
-                    wmbuf += r
-                if not r:
-                    logger.info('ws.recv() returned empty')
-                    done = True
-                if patt in buf:
-                    done = True
-                if len(wmbuf) > 100 or done:
-                    m = wmbuf[0:100]
-                    wmbuf = wmbuf[100:]
-                    api.WriteMessageToReservationOutput(resid, re.sub(r'''[^->'_0-9A-Za-z*:;,.#@/"(){}\[\] \t\r\n]''', '_', m))
-                if done:
-                    break
-            logger.info('received %s' % buf)
-            return buf
-
-        for _ in range(30):
-            try:
-                ws = websocket.create_connection(wsurl, subprotocols=['binary', 'base64'])
-
-                if vmxip.lower() == 'dhcp':
-                    ip_command = 'set interfaces fxp0.0 family inet dhcp'
-                else:
-                    if '/' not in vmxip:
-                        if vmxip.startswith('172.16.'):
-                            vmxip += '/16'
-                        else:
-                            vmxip += '/24'
-                    ip_command = 'set interfaces fxp0.0 family inet address %s' % vmxip
-
-                command_patts = [
-                    ("", "login:"),
-                    ("root", "#"),
-                    ("cli", ">"),
-                    ("configure", "#"),
-                    (ip_command, "#"),
-                    ("commit", "#"),
-                    ("set system root-authentication plain-text-password", "password:"),
-                    (rootpassword, "password:"),
-                    (rootpassword, "#"),
-                    ("commit", "#"),
-                    ("set system services ssh root-login allow", "#"),
-                    ("commit", "#"),
-                    ("set system login user %s class super-user authentication plain-text-password" % username, "password:"),
-                    (userpassword, "password:"),
-                    (userpassword, "#"),
-                    ("commit", "#"),
-                ]
-                for i in range(ncards):
-                    for j in range(10):
-                        command_patts.append(('set interfaces ge-%d/0/%d.0 family inet dhcp' % (i, j), '#'))
-                command_patts += [
-                    ("commit", "#"),
-                    ("exit", ">"),
-                    ("exit", "#"),
-                    ("exit", ":"),
-
-                ]
-                for command, patt in command_patts:
-                    if command:
-                        ws.send(command + '\n')
-                    sleep(3)
-                    ws_read_until(ws, patt)
-                break
-            except Exception as ee:
-                logger.info('Serial console websocket failed, sleeping 10 seconds: %s' % str(ee))
-                sleep(10)
-            finally:
-                logger.info('Closing websocket')
-                ws.close()
-        else:
-            raise Exception('Serial console did not become ready within 5 minutes')
-
-    @staticmethod
-    def vsphere_telnet_setup(api, resid, deployed_vcp, esxi_ip, telnetport, rootpassword, userfullname, username, userpassword, vmxip, logger):
-        if vmxip.lower() == 'dhcp':
-            ip_command = 'set interfaces fxp0.0 family inet dhcp'
-        else:
-            if '/' not in vmxip:
-                if vmxip.startswith('172.16.'):
-                    vmxip += '/16'
-                else:
-                    vmxip += '/24'
-            ip_command = 'set interfaces fxp0.0 family inet address %s' % vmxip
-
-        command_patterns = [
-            ("", "login:"),
-            ("root", "#"),
-            ("cli", ">"),
-            ("configure", "#"),
-            (ip_command, "#"),
-            ("commit", "#"),
-            ("set system root-authentication plain-text-password", "password:"),
-            (rootpassword, "password:"),
-            (rootpassword, "#"),
-            ("commit", "#"),
-            ("edit system services ssh", "#"),
-            ("set root-login allow", "#"),
-            ("commit", "#"),
-            ("exit", "#"),
-            ("edit system login", "#"),
-            ("set user %s class super-user" % username, "#"),
-            ("set user %s full-name \"%s\"" % (username, userfullname), "#"),
-            ("set user %s authentication plain-text-password" % username, "password:"),
-            (userpassword, "password:"),
-            (userpassword, "#"),
-            ("commit", "#"),
-            ("exit", "#"),
-            ("exit", ">"),
-            ("SLEEP", "10"),
-            ("show interfaces fxp0.0 terse", ">"),
-        ]
-        try:
-            while True:
-                tn = telnetlib.Telnet(esxi_ip, telnetport)
-                ts = ''
-                for command, pattern in command_patterns:
-                    if command == 'SLEEP':
-                        sleep(int(pattern))
-                        continue
-                    if command:
-                        tn.write(command + '\n')
-                    logger.info('Telnet: write %s' % command)
-                    s = ''
-                    stuck = False
-                    blankt = 0
-                    while True:
-                        t = tn.read_until(pattern, timeout=5)
-                        if t:
-                            blankt = 0
-                        else:
-                            blankt += 1
-                        tt = re.sub(r'''[^->'_0-9A-Za-z*:;,.#@/"(){}\[\] \t\r\n]''', '_', t)
-                        while tt:
-                            api.WriteMessageToReservationOutput(resid, tt[0:500])
-                            tt = tt[500:]
-                        s += t
-                        logger.info('Telnet: read %s' % t)
-                        if pattern in s:
-                            ts += s
-                            break
-                        if blankt > 5 and 'Choice: ' in s[-100:]:
-                            stuck = True
-                            break
-                    if stuck:
-                        logger.info('Telnet: DETECTED STUCK BOOT MENU, resetting and reconnecting')
-                        # tn.write('J\n1\n')
-                        api.ExecuteResourceConnectedCommand(resid, deployed_vcp[0], 'PowerOff', 'power')
-                        sleep(10)
-                        api.ExecuteResourceConnectedCommand(resid, deployed_vcp[0], 'PowerOn', 'power')
-                        sleep(10)
-                        break
-                    sleep(1)
-                else:
-                    break
-        except Exception as e:
-            raise Exception('Failure connecting to VM serial console on ESXi host %s port %d: %s' % (esxi_ip, telnetport, str(e)))
-
-        ips = re.findall(r'\D(\d+[.]\d+[.]\d+[.]\d+)/', ts)
-        if not ips:
-            raise Exception('VCP did not get IP from DHCP')
-        vmxip = ips[-1]
-        return vmxip
 
 
