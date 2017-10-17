@@ -695,7 +695,44 @@ CloudShell asks for network in some places and subnet in others.
 In general, don't trust UUIDs you see in the URL bar &mdash; instead look in the body of the details page.
 
 
+## Notes and warnings
 
+### vSphere duplicate serial port
+
+This can occur in two ways:
+- A vMX instance was somehow not properly deleted, surviving past the end of its reservation, and is still powered on
+- Multiple CloudShell servers controlling the same vCenter
+
+When a vMX is running with the serial console exposed on a port like 9300, and another vMX deployment tries to use 
+the same port 9300, the deployment process will end up connecting to the existing vMX and wait forever for
+the initial startup messages being emitted by the new vMX.
+
+In a special situation, edit the drivers on each CloudShell to use distinct ranges (e.g. 9310-9330), or expose the range 
+as an attribute on the vMX template.
+
+If multiple CloudShells create two vMX that both allocate the same VLAN (e.g. 2) for the management network, the second vMX 
+controller will fail to discover its cards.   
+
+### Easily missed settings
+
+#### hook_setup / hook_teardown
+On every blueprint where you want the vMX to deploy, be sure to remove the default Setup and Teardown and attach `hook_setup` and `hook_teardown`. 
+Consider making these the systemwide defaults. 
+
+#### `Wait for IPs` = False
+`Wait for IPs` must be set to false on the VCP app. This attribute is easy to miss because it's not a user setting by default.
+
+#### Import the JunOS shell
+
+The vMX depends on the standard JunOS. It is not included in the vMX package. 
+
+Download either the gen1 or gen2 Juniper router shell here:
+http://community.quali.com/spaces/12/index.html
+
+#### Cloud provider settings
+Use an ordinary app like a lightweight Linux to confirm the cloud provider settings are correct, before attempting the vMX.
+
+  
 
  
  
@@ -759,11 +796,14 @@ It performs the following series of tasks automatically:
     - each new vMX resource port
     - its assigned virtual L2 port
 1. Move connectors from the vMX template resource to the new vMX resource
-1. Add a service VNF Cleanup Service with an attached hook vnf_cleanup_orch_hook_post_teardown
+1. Add services VNF Cleanup Service with the attached hook vnf_cleanup_orch_hook_post_teardown:
+    - Delete vMX resource
+    - Delete virtual L2 resource 
+    - Delete OpenStack ports and networks that were created outside the cloud provider mechanisms
 1. Platform-specific:
     - OpenStack
         - Power off the vFP(s)
-        - Remove the dummy network connection
+        - Disconnect the dummy network
         - Power on the vFP(s)
 
 ### Teardown
