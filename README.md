@@ -13,7 +13,7 @@ with a virtual L2 resource explained below.
 
 Point-to-point and VLAN service connections are fully supported.
 
-vMX VM images from Juniper are deployed using `vSphere Deploy from Linked Clone` and 
+vMX VM images from Juniper are deployed using `VSphere Deploy from Linked Clone` and 
 `OpenStack Deploy From Glance Image` from standard cloud providers. 
 
 Tested with vMX release 17.1R1.8
@@ -43,8 +43,8 @@ Both kinds of shell are supported in the vMX deployment.
  
 A vMX consists of one controller VM, which presents the same interface as the MX, and one or more 
 card VMs linked to the controller. A NIC on a card will show up as an interface like ge-0/0/0 on 
-the controller in the JunOS CLI. The controller and its cards cards are linked via an isolated network unique 
-to each vMX instance. 
+the controller in the JunOS CLI. The controller and its cards are linked via an isolated network unique 
+to the vMX instance. 
 
 In CloudShell, the vMX VMs are hidden admin-only resources, and the vMX is represented by a resource 
 with the Juniper shell model. The translation from the familiar Juniper MX resource interface to underlying VMs takes place 
@@ -57,16 +57,19 @@ The following are synonyms:
 **Card, VFP (virtual forwarding plane), PFE (packet forwarding engine)**
 
 A vMX controller communicates with its cards over a dedicated network connected to the second NIC on all VMs.
-On the second NIC, the controller has a hard-coded IP of `128.0.0.1`, and cards set their IP to 
+On its second NIC, the controller has a hard-coded IP of `128.0.0.1`, and 
+cards set their IP to 
 `128.0.0.16` for card 0, `128.0.0.17` for card 1, etc. 
-The vMX automatically sets itself up by sending discovery messages over the `128.0.0.0` network.
+The vMX automatically sets itself up by sending discovery messages between VMs over the `128.0.0.0` network.
+
+vMX is released by Juniper as a set of disk image files, deployment scripts, and OpenStack Heat templates.
+The scripts and Heat templates are not used in the Quali deployment. 
 
 Note: On OpenStack vMX may only officially support one card.
 
-
 ## User workflow
 
-Drag a vMX template resource into a blueprint
+Drag a vMX template resource into a blueprint 
 
 Draw connectors to other elements in the blueprint
 
@@ -75,38 +78,49 @@ in blueprint properties.
 
 Reserve a new sandbox
 
-The vMX will appear indistinguishable from any other Juniper MX router resource.  
+The vMX will be deployed during Setup
 
-At any time after deployment, you can add more connectors going to the deployed vMX. Run Connect 
+The vMX will appear indistinguishable from any other Juniper MX router resource.
+
+The vMX template resource and its ports are completely shared across reservations, but to add multiple vMX to the same 
+blueprint, you need to create multiple template resources.  
+
+At any time after deployment, you can add more connectors going to the deployed vMX. Run `Connect`
 manually on each connector, or just run Setup again, and and it should connect all unconnected connectors.
   
-Note: On OpenStack, if you run Connect manually on connectors, you must do so in ascending order by vMX interface address.  
+Note: On OpenStack, if you run `Connect` manually on connectors, you must do so in ascending order by vMX interface address.  
 
 
 ## Use in an existing sandbox
 
 You can add a vMX template resource to an existing sandbox and connect it to other components there.
 
-Make connections to either the vMX template before deploying or the vMX resource after deploying.
+You can make connections before or after deploying:
+- the vMX template before deploying
+- the vMX resource after deploying
 
-To deploy the vMX, run the function orch_hook_during_provisioning on the vMX template resource. 
+To deploy the vMX, run the function `Deploy vMX` (internal name `vmx_orch_hook_during_provisioning`) on the vMX template resource. 
 
 The vMX will be automatically deleted by Teardown if hook_teardown is attached to the blueprint. If the blueprint still has
-the default Teardown, you will need to manually delete the vMX and the associated virtual L2 resources after
+the default Teardown, you will need to manually delete the vMX and the associated virtual L2 resources from the inventory after
 the sandbox has ended.   
 
 
 ## vMX package installation
 
 ### General
-Install the hook setup and teardown scripts: https://github.com/ericrqs/Setup-Teardown-Hooks
+Drag vMX_Package.zip into the portal.
 
-On any blueprint that needs to deploy a vMX, attach hook_setup and hook_teardown scripts to the sandbox in 
-place of Default Setup and Default Teardown. It is recommended to set hook_setup and hook_teardown as the systemwide 
+Import the gen1 or gen2 shell for Juniper JunOS routers published on the community: http://community.quali.com/spaces/12/index.html
+
+
+vMX_Package.zip includes the hook setup and teardown scripts: https://github.com/ericrqs/Setup-Teardown-Hooks
+
+On any blueprint that needs to deploy a vMX, be sure to attach `hook_setup` and `hook_teardown` scripts to the sandbox 
+and remove `Default Setup` and `Default Teardown`. It is recommended to set `hook_setup` and `hook_teardown` as the systemwide 
 default Setup and Teardown scripts.
   
 
-Drag vMX_Package.zip into the portal.
 
 Create a vCenter or OpenStack cloud provider.
 
@@ -125,95 +139,110 @@ Create at least one vMX template resource. Add multiple port subresources with r
 ![](screenshots/vmx-template-subresources.png)
 
 The first number in the port name is the card number, the middle number is always 0, and the last number is the port number.
-Note that `/` in the JunOS name `ge-0/0/0` is replaced with `-` in all CloudShell resource names in the vMX deployment and in both
-generations of the JunOS shell.
+Note that `/` in the JunOS port name `ge-0/0/0` is replaced 
+with `-` in all CloudShell resource names.
 
-Create enough port subresources to cover all your scenarios.
+Create enough port subresources to cover all your scenarios. The number of port subresources on the template does not directly control the number of ports in the actual deployment, 
+only how many port connections are presented in the GUI. The number of ports
+on the deployed cards is determined by the number of vNICs on the card template (vSphere) or the number of
+connections made in the GUI (OpenStack). 
 
 Note that on vSphere, the vNICs must also be added statically to the card prototype VM in vSphere ahead of time. 
-The first 3 NICs are reserved, so make sure the card template VM has 4-13 vNICs in order to 
+The first 3 NICs are reserved, so make sure the card template VM has 4 to 13 vNICs in order to 
 support 1-10 traffic interfaces. vMX has a limit of about 10 traffic interfaces per card. 
-There may be issues with interfaces beyond the 7th.
+There may be issues with interfaces beyond the 7th vNIC.
  
 
-Set attribute VLAN Type on the vMX template resource:
+Set attribute `VLAN Type` on the vMX template resource:
 - vSphere: Always **VLAN**
 - OpenStack: **VLAN** or **VXLAN** to match the setting on the OpenStack cloud provider
     
 
-Import the gen1 or gen2 shell for Juniper JunOS routers.
 
-Set the attributes on the vMX template resource to match the Juniper shell:
+Set the attributes on the vMX template resource to select the Juniper shell you installed:
 
-- For the gen1 Juniper shell:
-    - Deployed Resource Family: **Router**
-    - Deployed Resource Model: **Juniper JunOS Router**
-    - Deployed Resource Driver: **Generic Juniper JunOS Driver Version3**
-- For the gen2 Juniper router shell:
-    - Deployed Resource Family: **CS_Router**
-    - Deployed Resource Model: **Juniper JunOS Router 2G**
-    - Deployed Resource Driver: **Juniper JunOS Router 2G**
+- If you installed the gen1 Juniper shell:
+    - `Deployed Resource Family`: **Router**
+    - `Deployed Resource Model`: **Juniper JunOS Router**
+    - `Deployed Resource Driver`: **Generic Juniper JunOS Driver Version3**
+- If you installed the gen2 Juniper router shell:
+    - `Deployed Resource Family`: **CS_Router**
+    - `Deployed Resource Model`: **Juniper JunOS Router 2G**
+    - `Deployed Resource Driver`: **Juniper JunOS Router 2G**
 
-
-Create vMX template resources with multiple port subresources named ge-0-0-0, ge-0-0-1, ..., ge-1-0-0, ge-1-0-1, 
-where 
 
 Set other attributes that will be copied to the attributes of the vMX end product.
 
 You must set certain attributes in order for the vMX to autoload properly: 
-- SNMP Version: v2c
-- SNMP Community String: public
-- Enable SNMP: must be True
-- User: user to create
-- Password: password to set
-- Enable Password: must be same as Password
-- Backup Password: must be same as Password
+- `SNMP Version`: **v2c**
+- `SNMP Community String`: **public**
+- `Enable SNMP`: must be **True**
+- `User`: user to create
+- `Password`: password to set
+- `Enable Password`: must be same as `Password`
+- `Backup Password`: must be same as `Password`
 
 ![](screenshots/vmx-template-attrs1.png)
 ![](screenshots/vmx-template-attrs2.png)
 ![](screenshots/vmx-template-attrs3.png)
 
 
-Only Password will be used. It will be set as the password for the specified user and also for root. 
-Enable Password should be identical to Password. 
+Only `Password` will be used. It will be set as the password for the specified user and also for user `root`. 
+`Enable Password` should be identical to `Password`. It may be possible to change the handling of these passwords
+in the code (including adding attributes like `Root Password`). But when changing it,
+make sure the JunOS shell autoload still works. It may log in with `User`/`Password`, enable SNMP, 
+and perform the autoload over SNMP.
 
  
  
 ### vSphere-specific
 
-Important: In Resource Manager, Resource Families, Deployment Options family, 
-VCenter Deploy VM From Linked Clone, change Wait for IP to be a user input, or 
-change the default to false. On all vMX-related apps, Wait for IP must be false.
+#### Critical setting: Wait for IP
+In Resource Manager, Resource Families, Deployment Options family, 
+VCenter Deploy VM From Linked Clone, change `Wait for IP` to be a user input, or 
+change the default to False (box unchecked). On all vMX-related apps, `Wait for IP` must be false.
 ![](screenshots/wait-for-ip-user-input.png)
 
+#### Critical setting: ESXi serial console
 In the vSphere client, for each potential ESXi host where the controller VM could get 
-deployed, go to Configuration tab, Software section, Security Profile, Firewall, 
-Properties... and enable "VM serial port connected over network" (not "VM serial port 
-connected to vSPC"). If needed, you can click the Firewall button while standing on 
+deployed, go to:
+
+- Configuration tab
+    - Software section
+        - Security Profile
+            - Firewall
+                - Properties... 
+
+Enable "VM serial port connected over network" (not to be confused with "VM serial port 
+connected to vSPC"). 
+
+For greater security, you can click the Firewall button while standing on 
 "VM serial port connected over network" and enable the access only for the IP of the execution server. 
+
 ![](screenshots/esxi-serial.png)
 ![](screenshots/esxi-serial-web.png)
 
 
 #### Controller
-Import the 'vCP' template from Juniper. After importing the OVA, ensure that the VM is set to have 
+Import the vCP OVA template from Juniper. After importing the OVA, ensure that the VM is set to have 
 at least 2048MB of memory. By default it receives so little memory that it can't boot.
 
-Connect 'Network adapter 1' to your management network.
+Connect "Network adapter 1" to your management network.
 
 Power on the controller VM. Note that it may freeze for many minutes, sending output only 
-to the serial console. Eventually it should many print FreeBSD boot messages and reach a login: prompt 
+to its serial console. Eventually it should many print FreeBSD boot messages and reach a `login:` prompt 
 in the vSphere console.
 
-Log in as 'root' with no password and run 'halt'. Wait a short time for the system to shut down. Power off the VM. 
+Log in as `root` with no password and run `halt`. Wait a short time for the system to shut down. Power off the VM. 
 
-Take a snapshot of the VM. Be sure to take the snapshot only after VM settings including NICs, and after booting at least once.
-If you take a series of snapshots, be sure to note the full snapshot path from the tree under 'Manage Snapshots', `e.g. ss1/ss2/ss3`.
+Take a snapshot of the VM. Be sure to take the snapshot only after making all VM hardware settings, and after booting at least once.
+If you take a series of snapshots, be sure to note the full snapshot path from 
+the tree under "Manage Snapshots", e.g. `ss1/ss2/ss3`.
 
 
-Create an app for the controller.
+Create an app in CloudShell for the controller.
 
-Be sure to set Wait for IP to False. If it is not visible, make the setting a user input in Resource Manager.
+Be sure to set `Wait for IP` to False. If it is not visible, make the setting a user input in Resource Manager.
 
 ![](screenshots/vsphere-vcp1.png)
 ![](screenshots/vsphere-vcp2.png)
@@ -224,55 +253,68 @@ Be sure to set Wait for IP to False. If it is not visible, make the setting a us
 
 #### Cards
 
-Import the VFP OVA. Ensure that the VFP VM has at least 4096MB of RAM. Otherwise it will fail to handshake with the VCP.
+Import the VFP OVA. 
+
+Ensure that the VFP VM has at least 4096MB of RAM. Otherwise it will fail to handshake with the VCP.
 
 Take a snapshot of the card VM immediately with a name like `ss`. 
 
 For every card you want to deploy, including card 0, you must set the card id on the VM
-and take a snapshot. The factory image may start with card id 3, which will crash the automation.
+and take a snapshot. The factory image may start with card id 3, which will crash the deployment automation.
 
 For each card including 0:
 - Revert the VM to the first snapshot `ss`
 - Boot the VM
-- Log in as root/root
+- Log in as `root`/`root`
 - Write the desired card id to a file called `/var/jnx/card/local/slot`. For example, for card 0:
 
         mkdir -p /var/jnx/card/local
         echo 0 > /var/jnx/card/local/slot
         reboot
         
-- Log in again as root/root
-- Ensure that the card id file has influenced the IP on interface 'int' using `ifconfig`. 
-For example for card 1 it should display `128.0.0.17`.
+- Log in again as `root`/`root`
+- Run `ifconfig` to ensure that the card id file has influenced the IP on the Linux ethernet interface named `int`. 
+For card 0 it should display `128.0.0.16`, for card 1 `128.0.0.17`, etc.
         
 - Shut down the VM OS: `halt`
        
 - Power off the VM
-- Take a snapshot with the card id in the name, e.g. `card1`
+
+- Take a snapshot with the card id in the name, e.g. `card0`
 
 ![](screenshots/vsphere-snapshots.png)
 
+If you discover you omitted something from a snapshot, just go to the snapshot, correct the settings, 
+and take another snapshot, keeping track of the full snapshot path. 
+For example, in the environment where the screenshots were taken, the working snapshots have names like `ss1/ss2/preip/slot0/cleanslot0`.
 
-For each card snapshot, create a separate app. Use a naming convention for the apps. You will need to specify the name
-on the vMX template with `%d` representing the card number. For example, if you name the card apps `vsphere-vfp0` and 
-`vsphere-vfp1`, on the vMX template resource set Module App to `vsphere-vfp%d`.
+For each card snapshot, create a separate CloudShell app. 
+Use a naming convention for the apps. You will need to specify the app name
+in the attribute `Module App` on the vMX template resource, with `%d` representing the card number. For example, if you name the card apps `vsphere-vfp0` and 
+`vsphere-vfp1`, on the vMX template resource set `Module App` to `vsphere-vfp%d`.
 
-Creating the app vsphere-vfp0 for card 0:
+Example: Creating the app vsphere-vfp0 for card 0:
 ![](screenshots/vsphere-vfp0-1.png)
 ![](screenshots/vsphere-vfp0-2.png)
 ![](screenshots/vsphere-vfp0-3.png)
 ![](screenshots/vsphere-vfp0-4.png)
 
-Difference in snapshot name for vsphere-vfp1 for card 1:
+Difference in snapshot name for app vsphere-vfp1 for card 1:
 ![](screenshots/vsphere-vfp1-2.png)
 
 
 
-#### VLAN service
-On vSphere, the deployment will automatically add an Auto VLAN service to the sandbox for the internal network. If you need to hide this
-VLAN service from the user in the sandbox, copy the Virtual Network service family in Resource Manager and set the copy to admin-only. 
-Rename the new Auto VLAN_1 as needed. Provide the model name of the new admin-only auto VLAN service in 
-the Internal Network Service attribute on the vMX template resource.
+#### Admin-only VLAN service
+By default, the deployment on vSphere will automatically add an ordinary 
+`VLAN Auto` service to the sandbox for the internal network. This will be visible to non-admin users. 
+
+If you want to hide this VLAN service from the user in the sandbox, 
+create an admin-only VLAN service for use by the vMX deployment:
+
+- In Resource Manager, copy the Virtual Network service family
+- Set the new family to admin-only
+- Rename the new service family and model (e.g. `Virtual Network Admin Only`, `VLAN Auto Admin Only`)
+- On each vMX template resource, set `Internal Network Service` to the new admin-only VLAN service name 
 
 ![](screenshots/vlan-auto-admin-only.png)
 
@@ -286,16 +328,18 @@ Tested configuration:
     CentOS Linux release 7.3.1611  (Core)
     Four physical NICs: enp3s0f0 enp4s0f0 connected, enp3s0f1 enp4s0f1 not connected
     OpenStack Newton
+
+#### Notes
     
 Note: vMX is very sensitive to OpenStack network settings. If the `128.0.0.0` network is not working, 
 the VCP will not detect the VFP and will not show interfaces like `ge-0/0/0`. Even when `ge-0/0/0` appears,
-actual traffic may not be able to pass through the VFP interface, so for example the vMX can't ping something on the ge-0/0/0 interface.
+actual traffic may not be able to pass through the VFP interface, so for example the vMX can't ping over the `ge-0/0/0` interface.
 
 
 After a lot of trial and error, we found the following combination of settings that works under OpenStack Newton.
 This is needed even if deploying manually with the official Juniper Heat scripts. We would appreciate any further insight or guidance.
 
-- Firewall settings: security groups enabled in two places, specific driver selections:
+- Firewall settings: security groups enabled in two places and specific driver selections:
     - `ml2_conf.ini`
         - `firewall_driver = None`
         - `enable_security_group = True`
@@ -303,15 +347,17 @@ This is needed even if deploying manually with the official Juniper Heat scripts
         - `firewall_driver = openvswitch`
         - `enable_security_group = True`
 - We _enable_ the `port_security` plugin in order to be able to _disable_ port security on the `128.0.0.0` network ports (programmatically)
-- When we create the `128.0.0.0` network and ports, we
+- When we create the `128.0.0.0` network and ports, we:
     - turn off security groups
     - disable port security 
 - Ensure that the MTU on the `128.0.0.0` network is 1500 or greater. The bytes stolen by VXLAN encapsulation are enough to break the communication between VCP and VFP, 
-and we don't know how to reconfigure either one to reduce their MTUs. We made the MTU 9000 systemwide, but it might be possible to increase it only 
+and we don't know how to reconfigure the OS on either VM to reduce the MTU. In the example below, we made the MTU 9000 systemwide, but it might be possible to increase it only 
 for the `128.0.0.0` networks.
-- Change the default security group to be totally permissive for IPv4 ICMP, TCP, UDP inbound and outbound. This may not be necessary at all.
+- Change the default security group to be totally permissive for IPv4 ICMP, TCP, UDP inbound and outbound. Note: This may not be necessary at all.
 
+#### Reference OpenStack installation steps
 
+Make sure that the machine has a static IP. DHCP may cause problems and has not been tested.
     
     systemctl disable firewalld
     systemctl stop firewalld
@@ -331,19 +377,18 @@ for the `128.0.0.0` networks.
 The machine starts with a static IP on enp3s0f0. 
 
 Packstack will create an OpenvSwitch bridge `br-ex`, move ethernet interface `enp3s0f0` under it, 
-and move the static IP onto `br-ex`. `br-ex` will be used for the flat network, named `extnet` within OpenStack. 
+and move the static IP onto `br-ex`. `br-ex` will be used for the flat network, named `extnet` within OpenStack.
+
 
 It will also create an OVS bridge `br-vlan` and move `enp4s0f0` under it. This will be used for the OpenStack VLAN network named `physnet1`. 
 
-enp4s0f0 is connected to a trunked port on the switch.    
-    
-We enable flat, VLAN, and VXLAN networkng. 
+`enp4s0f0` is cabled to a trunked port on a physical switch.
 
-Packstack will create 
+We enable flat, VLAN, and VXLAN networkng. 
 
 
 Set the MTU to a value greater than 1500. This is because the vMX `128.0.0.0` network fails silently when the MTU is reduced below 1500 by a VXLAN network. 
-It might be possible to reduce the MTU in a more limited scope.  
+It might be possible to increase the MTU in a more limited scope.  
 
     vi /etc/neutron/neutron.conf
 
@@ -372,6 +417,9 @@ Configure MTU and VLANs range. Enable specific security group and firewall setti
     [securitygroup]
     firewall_driver = None
     enable_security_group = True
+
+`physnet1` is the name you have chosen above. 48:60 is the range of VLANs on the physical network 
+you have reserved for OpenStack.
 
 More critical firewall and security group settings:
 
@@ -427,6 +475,8 @@ Restart relevant services:
     
 You can also reboot instead. 
 
+Create OpenStack networks:
+
     . keystonerc_admin
     
     neutron net-create public --shared --provider:physical_network extnet --provider:network_type flat --router:external
@@ -440,10 +490,10 @@ You can also reboot instead.
     neutron net-create e
     neutron subnet-create e 53.0.0.0/24 --name e-subnet --allocation-pool start=53.0.0.10,end=53.0.0.100 --gateway=53.0.0.1 --enable_dhcp=True
 
-Create a router with `public` as the external network and add a port on the `mgmt` network.
+In the OpenStack GUI, create a router with `public` as the external network. Add a router port on the `mgmt` network.
 
-Change the default security group to allow all ingress and egress traffic for ICMP, TCP, and UDP. You might have
-a way to use a more limited scope.
+Change the default security group to allow all ingress and egress traffic for ICMP, TCP, and UDP. This may be totally unnecessary, 
+or you might find a way to allow less traffic where the vMX still works.
 
 
 #### vMX setup
@@ -526,13 +576,18 @@ Deploy the VCP and VFP from the CLI to make sure the system is working:
     
     
 Follow the boot messages in the interactive console of the VCP in the OpenStack Horizon web GUI. 
-Note that there will be no data in the Log tab because the serial console plugin is enabled.
- 
+
 Wait about 10 minutes. For much of this time, there will be nothing on the console because the first VCP 
 boot prints only to the serial console. For some of this time there will be a solid bright white cursor in the corner.
 Eventually it should start to print bright white text and FreeBSD boot messages. 
 
-At the `login:` prompt, log in as `root` with no password. Run `cli` to get the JunOS CLI. 
+
+Note that there will be no data in the Log tab because the serial console plugin is enabled.
+ 
+
+At the VCP `login:` prompt, log in as `root` with no password. 
+
+Run `cli` to get the JunOS CLI. 
 
     show interfaces terse
     
@@ -549,25 +604,35 @@ You can also perform a further network test:
     set interfaces ge-0/0/0 unit 0 family inet address 53.0.0.123/24
     commit
     exit
-_Note: This IP `53.0.0.123` must match the value that OpenStack assigned to the VFP VM on the `e` network_    
+_Note: Change the IP `53.0.0.123` to match the value that OpenStack assigned to the VFP VM on the `e` network, or traffic will be blocked_    
     
 - Create two Cirros VMs on network `e`
-- Ensure that the Cirros VMs received IPs and can ping each other
-- Try to ping between a Cirros VM and the vMX from  
+- Log in to the Cirros machines and ensure that they received IPs
+- Ensure one Cirros VM can ping the other
+- Try to ping between a Cirros VM and the vMX
 
-It can fail in a number of ways, in ascending order of severity:
+This network test can fail in a number of ways, in ascending order of severity:
 - Can't ping the `ge-0/0/0.0` interface
 - `ge-0/0/0` doesn't appear on the VCP
 - `pfe-/0/0/0` doesen't appear on the VCP
 - If you log in to the VFP console (`root`/`root`) you can't ping the VCP at `128.0.0.1`
 
+Causes of failure include:
+- Incorrect OpenStack driver or port security settings
+- MTU less than 1500
+- Unexpected failure of OpenStack DHCP server
+- Mistakes in IPs
+- Mismatch between OpenStack assigned IP and IP set in the VM OS
 
-Once you have determined that the manually deployed vMX works on your system:
+But there can also be other causes. 
+
+Once you have determined that a vMX deployed from the command line is 
+fully working on your system:
 
 - Log in to the console of the VCP (root, no password) and do `halt`.
 - Power off the VCP VM.
 - Take a snapshot of the powered-off VCP called `vcpss`. This snapshot is the image that will be used by Quali to 
-deploy the VCP, along with the vanilla VFP image that was imported.
+deploy the VCP. (The VFP will be deployed from the original VFP image.)
 - Clean up the networks and VMs:
 
 
@@ -596,7 +661,7 @@ Print out certain useful object ids that must be entered into CloudShell:
     grep network_vlan_ranges /etc/neutron/plugins/ml2/ml2_conf.ini
     ip addr |grep 'inet '
     
-You will need to provide the password for `admin` (or another privileged user you created), the 
+You will need to provide CloudShell with the password for `admin` (or another privileged user you created), the 
 _network_ id of the network you want to use for management, the public flat _subnet_ id you want 
 to use for floating IPs, and the VCP and VFP image ids.
 
@@ -623,6 +688,7 @@ Example output:
     inet 127.0.0.1/8 scope host lo
     inet 192.168.137.201/24 brd 192.168.137.255 scope global br-ex
 
+Set all CloudShell VLAN service allocation ranges (VLAN Auto, P2P) to match the VLANs you set in OpenStack, e.g. 48..60.
 
 #### Configure an OpenStack cloud provider
 
@@ -691,8 +757,8 @@ All others can be left blank, including the `Floating IP Subnet ID` if you want 
 
  
 If you get these values from the OpenStack web GUI, always be sure you have the right id. 
-CloudShell asks for network in some places and subnet in others.
-In general, don't trust UUIDs you see in the URL bar &mdash; instead look in the body of the details page.
+CloudShell asks for *network* in some places and *subnet* in others.
+In general, don't trust a UUID from the URL bar &mdash; instead look in the body of the details page.
 
 
 ## Notes and warnings
@@ -707,11 +773,11 @@ When a vMX is running with the serial console exposed on a port like 9300, and a
 the same port 9300, the deployment process will end up connecting to the existing vMX and wait forever for
 the initial startup messages being emitted by the new vMX.
 
-In a special situation, edit the drivers on each CloudShell to use distinct ranges (e.g. 9310-9330), or expose the range 
-as an attribute on the vMX template.
+In a special situation, you can edit the drivers on each CloudShell to use distinct ranges (e.g. 9310-9330), or edit the
+driver to take the range from an attribute on the vMX template resource.
 
 If multiple CloudShells create two vMX that both allocate the same VLAN (e.g. 2) for the management network, the second vMX 
-controller will fail to discover its cards.   
+controller will fail to discover its cards.
 
 ### Easily missed settings
 
@@ -720,7 +786,7 @@ On every blueprint where you want the vMX to deploy, be sure to remove the defau
 Consider making these the systemwide defaults. 
 
 #### `Wait for IPs` = False
-`Wait for IPs` must be set to false on the VCP app. This attribute is easy to miss because it's not a user setting by default.
+`Wait for IPs` must be set to False on the VCP app. This attribute is easy to miss because it's not a user setting by default.
 
 #### Import the JunOS shell
 
@@ -738,66 +804,70 @@ Use an ordinary app like a lightweight Linux to confirm the cloud provider setti
  
 ## Implementation details
 
-The vMX template resource has port subresources with names like ge-0-0-0. The port family is marked Locked by Default = false
-so the same template resource can be used in multiple simultaneous reservations. To use multiple vMX instances in the same reservation,
-create more copies of the vMX template resource.
+The vMX template resource has port subresources with names like `ge-0-0-0`. 
+The port family has `Locked by Default` = **False**
+so the same template resource and all ports can be used in multiple 
+simultaneous reservations. 
+To use multiple vMX instances in the same reservation,
+create more vMX template resources via copy-paste in Resource Manager.
 
-The vMX template resource has a hook function orch_hook_during_provisioning that will be called by the hook_setup setup script
-in parallel to standard app deployments.
+The vMX template resource has a hook function `vmx_orch_hook_during_provisioning` that will be called by the `hook_setup` setup script
+in parallel to standard app deployments. This function itself adds and deploys apps in the reservation, on its own schedule.
 
 ### Setup
 
-hook_setup calls vMX VNF Deployment Resource Driver.orch_hook_during_provisioning.
+`hook_setup` calls `vmx_orch_hook_during_provisioning` on `vMX VNF Deployment Resource Driver` 
+which is attached to each VMX template resource in the reservation.
 
 It performs the following series of tasks automatically: 
 1. Add new vCP app and vFP app(s) to the reservation, with names based on the template resource name
-1. Deploy the vCP and vFP(s) using DeployAppToCloudProviderBulk, producing deployed resources of type vMX VCP and vMX VFP
+1. Deploy the vCP and vFP(s) using `DeployAppToCloudProviderBulk`, producing deployed resources with models `vMX VCP` and `vMX VFP`
 1. Platform-specific:
     - vSphere
-        - Add an auto VLAN ('Auto VLAN' or the service name specified in the Internal Network Service attribute) and connect it to NIC #2 of vCP and vFP(s) 
-        - With pyVmomi, add a serial console to the vCP to be accessed through an ESXi port in the range 9300..9330 (managed by a CloudShell number allocation pool)
+        - Add an auto VLAN service (**VLAN Auto** or the service name specified in the `Internal Network Service` attribute) and connect it to NIC #2 of the vCP and each vFP 
+        - With pyVmomi, add a serial console to the vCP to be accessed through an ESXi port in the range 9300..9330, allocated from a CloudShell number pool
         - Telnet to vCP serial console
             - If the console gets stuck at a boot prompt, reset the VM, up to 5 times
             - Log in as root (no password)
             - Set root password
             - Create username and set password according to resource template attributes
             - Enable SSH
-            - Enable DHCP or set static IP on management interface fxp0.0, and determine the final management IP
-        - With pyVmomi, determine the mapping from vNIC index (e.g. Network adapter 3) to MAC address
+            - Enable DHCP or set a static IP on management interface `fxp0.0`, and return the final `fxp0.0` IP 
+        - With pyVmomi, determine the mapping from vNIC index (e.g. `Network adapter 3`) to MAC address
     - OpenStack
         - Power off the vCP and vFP(s)
-        - With the Neutron API, create an isolated network and a subnet 128.0.0.0/24 with ports with IPs 128.0.0.1 for the vCP and 128.0.0.16, 128.0.0.17, ... for the vFP(s)
-        - With the Nova API, connect the vCP and vFPs to their dedicated ports on the 128.0.0.0/24 network
-        - Create a dummy network and attach it to the vFPs (to be removed later in the deployment)
-        - Power on the vCP and vFP(s) 
-        - Connect via a WebSocket to the vCP serial console
+        - With the Neutron API, create an isolated network and a subnet `128.0.0.0/24` with fixed-IP ports: `128.0.0.1` for the vCP and `128.0.0.16`, `128.0.0.17`, ... for the vFP(s)
+        - With the Nova API, connect the vCP and vFPs to their dedicated ports on the `128.0.0.0/24` network
+        - Create a dummy network and attach it to the vFPs (to be removed later in the deployment)  &mdash; at least one network is for the vMX handshake to work properly
+        - Power on the vCP and vFP(s)
+        - Connect via WebSocket to the vCP serial console
             - Log in as root (no password)
             - Set root password
             - Create username and set password according to resource template attributes
             - Enable SSH
-            - Enable DHCP on management interface fxp0.0
+            - Enable DHCP on management interface `fxp0.0`
             - Determine the DHCP management IP
 1. Wait until the vCP is reachable by SSH
 1. SSH to the vCP as root using the new password
-1. In the vCP's FreeBSD shell, run 'ifconfig' and wait until all expected interface names appear, such as ge-0-0-0. The first number in the interface name indicates the card number. If 3 vFPs were requested, wait until interfaces with names like ge-0-x-x, ge-1-x-x, and ge-2-x-x all appear. This will indicate that the handshake between the vCP and each vFP has taken place. Record the MAC addresses of all ge-x-x-x interfaces of the vCP. These will be MAC addresses on vFP VMs.
+1. In the vCP's FreeBSD shell, run `ifconfig` and wait until all expected interface names appear, such as `ge-0-0-0`. The first number in the interface name indicates the card number. If 3 vFPs were requested, wait until interfaces with names like `ge-0-x-x`, `ge-1-x-x`, and `ge-2-x-x` all appear. This will indicate that the handshake between the vCP and each vFP has taken place. Record the MAC addresses of all `ge-x-x-x` interfaces of the vCP. These will be MAC addresses on vFP VMs.
 1. Create a new resource to represent the vMX. It can be either the gen1 or gen2 JunOS router shell. The family, model, and driver name are specified in the vMX template resource.
-1. Set the IP of the vMX resource to the fxp0.0 IP determined earlier (static or DHCP) 
-1. Copy all attributes from the vMX template resource to the new vMX resource. This includes critical attributes like User, Password, Enable Password, SNMP version (v2c recommended), SNMP community string (e.g. public), and Enable SNMP (must be true)
-1. Run Autoload on the new vMX resource. This will use the standard JunOS driver for router hardware. 
+1. Set the IP of the vMX resource to the `fxp0.0` IP determined earlier (static or DHCP) 
+1. Copy all attributes from the vMX template resource to the new vMX resource. This includes critical attributes like `User`, `Password`, `Enable Password`, `SNMP Version` (v2c recommended), `SNMP Community String` (e.g. public), and `Enable SNMP` (must be true)
+1. Run Autoload on the new vMX resource. This will use the standard JunOS driver designed for router hardware. 
 1. If Autoload fails to detect all expected ports, retry several times
 1. Create a virtual L2 switch
     - Create one port subresource for each autoloaded vMX port
         - Name: port#, an incremented number starting from 0
         - Attribute `VM Name` with the resource name of the corresponding card VM
         - Attribute `VM Port vNIC Name`
-            - for vSphere, the id of the NIC (e.g. 3 for Network adapter 3) that has the MAC that matches the autoloaded vMX port
-            - for OpenStack, the last number in the port address, e.g. 3 for ge-0-0-3
+            - for vSphere, the id of the NIC (e.g. `3` for `Network adapter 3`) that has the MAC that matches the autoloaded vMX port
+            - for OpenStack, the last number in the port address, e.g. `3` for `ge-0-0-3`
 1. Set physical connections between:
     - each new vMX resource port
     - its assigned virtual L2 port
 1. Move connectors from the vMX template resource to the new vMX resource
-1. Add services VNF Cleanup Service with the attached hook vnf_cleanup_orch_hook_post_teardown:
-    - Delete vMX resource
+1. At various times throughout the above procedure, add services of model `VNF Cleanup Service` with the attached hook script `vnf_cleanup_orch_hook_post_teardown`:
+    - Delete the vMX resource
     - Delete virtual L2 resource 
     - Delete OpenStack ports and networks that were created outside the cloud provider mechanisms
 1. Platform-specific:
@@ -809,8 +879,8 @@ It performs the following series of tasks automatically:
 ### Teardown
 1. Apps are destroyed automatically by the default teardown process and the VMs are automatically 
 deleted by the cloud provider 
-1. The hook vnf_cleanup_orch_hook_post_teardown on the VNF Cleanup Service deletes the virtual L2 and the 
-autoloaded vMX resource
+1. The hook `vnf_cleanup_orch_hook_post_teardown` on each `VNF Cleanup Service` deletes the virtual L2, the 
+autoloaded vMX resource, and OpenStack networking objects
 
 ### Virtual L2 operation
 
@@ -973,7 +1043,7 @@ A connectivity request with multiple actions is split into a series of connectio
 They are sent to the cloud provider in ascending order by Vnic Name. This is because the OpenStack cloud provider
 currently determines the NIC not from Vnic Name but from the order requests are sent.
 
-The JSON output of the cloud providers ApplyConnectivityChanges calls is accumulated and bundled as the 
+The JSON output of the cloud provider ApplyConnectivityChanges calls is accumulated and bundled as the 
 output of the virtual L2 ApplyConnectivityChanges. This is critical in order for the system to set attributes 
 on the connector that are needed when disconnecting.
 
@@ -993,9 +1063,9 @@ The only safe way to disconnect some connection and later connect some connectio
 connectors for that card and then reconnect all of them, either manually doing Connect on each one in 
 ascending order (ge-0-0-0 first) or making a bulk call ConnectRoutesInReservation that will send them all to 
 the virtual L2 as a batch without gaps at the bottom. 
-- It would break if the standard Setup connectivity phase started to spread the connector endpoints across 
+- This implementation would break if the standard Setup connectivity phase started to spread the connector endpoints across 
 multiple calls to ConnectRoutesInReservation and not all connectors for a single vMX were sent in the 
 same ApplyConnectivityChanges batch
-- It would break if the system stopped translating a ConnectRoutesInReservation call into a single batch 
+- This implementation would break if the system stopped translating a ConnectRoutesInReservation call into a single batch 
 call to ApplyConnectivityChanges per L2 provider
 
